@@ -20,17 +20,22 @@ from io import BytesIO
 CURRENT_IMAGE_INDEX = 0
 IMAGES = None
 
-# Images along with histogram
-def plot_from_normal_formats(images):
-    plt.figure(figsize=(8, 4))
+# Display image along with histogram
+def display_image_and_histogram(image, title="Imagem"):
+    plt.figure(figsize=(10, 5))
 
+    # Image
     plt.subplot(1, 2, 1)
-    plt.imshow(cv2.cvtColor(images, cv2.COLOR_BGR2RGB))
+    if len(image.shape) == 2:  # Grayscale
+        plt.imshow(image, cmap='gray')
+    else:  # RGB
+        plt.imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     plt.axis('off')
+    plt.title(title)
 
     # Histogram
     plt.subplot(1, 2, 2)
-    plt.hist(images.ravel(), bins=256, color='gray', alpha=0.7)
+    plt.hist(image.ravel(), bins=256, color='gray', alpha=0.7)
     plt.xlim([0, 255])
     plt.title('Histograma')
     plt.xlabel('Intensidade de Pixel')
@@ -45,51 +50,30 @@ def load_image():
     
     if image_path:
         image = cv2.imread(image_path)
-        plot_from_normal_formats(image)
+        display_image_and_histogram(image, title="Imagem Carregada")
 
-# Image along with histogram for .MAT files
-def show_mat_image(index):
-    global images
-    if images is not None:
-        plt.figure(figsize=(10, 5))
-
-        plt.subplot(1, 2, 1)
-        plt.imshow(images[index], cmap='gray')
-        plt.axis('off')
-        plt.title(f'Imagem {index + 1}')
-
-        # Histogram
-        plt.subplot(1, 2, 2)
-        plt.hist(images[index].ravel(), bins=256, color='gray', alpha=0.7)
-        plt.xlim([0, 255])
-        plt.ylim([0, 5000])
-        plt.title('Histograma')
-        plt.xlabel('Intensidade de Pixel')
-        plt.ylabel('Frequência')
-
-        plt.tight_layout()
-        plt.show()
-
-# Load .MAT files
+# Load .MAT files and display images
 def load_mat_file():
-    global images, current_image_index
+    global IMAGES, CURRENT_IMAGE_INDEX
     mat_path = filedialog.askopenfilename(filetypes=[("MAT files", "*.mat")])
     
     if mat_path:
         mat = scipy.io.loadmat(mat_path)
         data = mat['data']
-        images = data[0, 0][-1]
-        current_image_index = 0 
-        show_mat_image(current_image_index)
+        IMAGES = data[0, 0][-1]
+        CURRENT_IMAGE_INDEX = 0
+        display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX], title=f"Imagem {CURRENT_IMAGE_INDEX + 1}")
 
+# ESSA FUNÇÃO É PROVISÓRIA
 def next_image():
-    global current_image_index
-    if images is not None and current_image_index < images.shape[0] - 1:
-        current_image_index += 1
-        show_mat_image(current_image_index)
+    global CURRENT_IMAGE_INDEX
+    if IMAGES is not None and CURRENT_IMAGE_INDEX < IMAGES.shape[0] - 1:
+        CURRENT_IMAGE_INDEX += 1
+        display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX], title=f"Imagem {CURRENT_IMAGE_INDEX + 1}")
     else:
         print("Não há mais imagens para mostrar.")
 
+# ROI -> Region of Interest
 def select_roi():
     image_path = filedialog.askopenfilename(filetypes=[("Imagens", "*.png;*.jpg")])
     
@@ -101,11 +85,8 @@ def select_roi():
         if roi != (0, 0, 0, 0):
             roi_cropped = image[int(roi[1]):int(roi[1]+roi[3]), int(roi[0]):int(roi[0]+roi[2])]
 
-            plt.imshow(cv2.cvtColor(roi_cropped, cv2.COLOR_BGR2RGB))
-            plt.axis('off')
-            plt.title('Imagem Recortada (ROI)')
-            plt.show()
-    
+            display_image_and_histogram(roi_cropped, title="Imagem Recortada (ROI)")
+
 # ------------------------------------ GUI ----------------------------------------
 
 # Init
@@ -129,6 +110,7 @@ normal_images_format_button.pack(pady=10)
 mat_file_button = Button(root, text='Carregar Arquivo .mat', command=load_mat_file)
 mat_file_button.pack(pady=10)
 
+# Next image [ BUTTON ]
 next_image_button = Button(root, text='Próxima Imagem', command=next_image)
 next_image_button.pack(pady=10)
 
