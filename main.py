@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
 
+# Image Save
 import os
 from scipy.io import savemat
 
@@ -24,8 +25,6 @@ CURRENT_IMAGE_INDEX = 0
 IMAGES = None
 
 # Display image along with histogram
-
-
 def display_image_and_histogram(image, isROI = False, title="Imagem"):
 
     average_brightness = np.mean(image)
@@ -76,10 +75,6 @@ def load_file(isROI = False):
             display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX], isROI, title=f"Imagem {
                                         CURRENT_IMAGE_INDEX + 1}")
 
-# ESSA FUNÇÃO É PROVISÓRIA
-
-
-# ESSA FUNÇÃO É PROVISÓRIA
 def next_image():
     global CURRENT_IMAGE_INDEX
     if IMAGES is not None and CURRENT_IMAGE_INDEX < IMAGES.shape[0] - 1:
@@ -88,6 +83,55 @@ def next_image():
                                     CURRENT_IMAGE_INDEX + 1}")
     else:
         print("Não há mais imagens para mostrar.")
+
+#Calculos ROI
+def calc_HI(roi_rim, roi_figado):
+    paciente = 0
+    ultrassom = 0
+
+    average_rim = np.mean(roi_rim)
+    average_figado= np.mean(roi_figado)
+
+    hi_ratio = average_figado / average_rim
+
+    def show_hi_ratio_window(hi_ratio):
+        # Cria uma nova janela
+        hi_window = Toplevel(root)  # Usa Toplevel para criar uma nova janela
+        hi_window.title("HI Ratio")
+        hi_window.geometry("300x200")
+
+        # Adiciona um label com o hi_ratio
+        label = Label(hi_window, text=f"HI Ratio: {hi_ratio:.2f}", font=('Arial', 14))
+        label.pack(pady=20)
+
+        # Botão para fechar a janela
+        close_button = Button(hi_window, text="Fechar", command=hi_window.destroy)
+        close_button.pack(pady=10)
+
+    adjusted_roi_figado = roi_figado * hi_ratio
+    
+    # Arredonda os valores
+    adjusted_roi_figado = np.round(adjusted_roi_figado).astype(np.uint8)  # Converte para uint8 após arredondar
+
+    # Certifique-se de que os valores ajustados não excedam 255
+    adjusted_roi_figado = np.clip(adjusted_roi_figado, 0, 255)
+
+    roi_file_name = f"roi_{paciente}_{ultrassom}.mat"  # Nome da ROI baseado na posição
+    roi_save_path = os.path.join(os.getcwd() + "/", roi_file_name)
+
+    # Garantir que a ROI é convertida para float para ser salva no formato .mat
+    roi_cropped_float = adjusted_roi_figado.astype(np.float32)
+                    
+    # Salvando a ROI em um dicionário
+    savemat(roi_save_path, {'roi': roi_cropped_float})
+
+    if(ultrassom > 10):
+        paciente+=1
+        ultrassom = 0
+    else:   
+        ultrassom+=1
+
+    show_hi_ratio_window(hi_ratio)
 
 # ROI -> Region of Interest
 
@@ -101,9 +145,33 @@ def select_rois():
 
         # Copiar a imagem original para exibir o corte das ROIs
         image_copy = image.copy()
+        click_count = [0]
 
+        roi_rim = None  
+        roi_figado = None  
+
+        def show_message_on_image(image, message):
+            font = cv2.FONT_HERSHEY_PLAIN
+            font_scale = 0.75
+            color = (0, 0, 255)
+            thickness = 1
+            position = (10, 30) 
+
+            background_color = (255, 255, 255)
+            text_size = cv2.getTextSize(message, font, font_scale, thickness)[0]
+
+            top_left = (position[0] - 5, position[1] - 20)  
+            bottom_right = (position[0] + text_size[0] + 5, position[1] + 5) 
+            cv2.rectangle(image, top_left, bottom_right, background_color, -1)
+
+            # Desenha a nova mensagem sobre o retângulo
+            cv2.putText(image, message, position, font, font_scale, color, thickness, cv2.LINE_AA)
+
+       
         def click_event(event, x, y, flags, param):
-            if event == cv2.EVENT_LBUTTONDOWN:
+            nonlocal roi_rim, roi_figado 
+            if event == cv2.EVENT_LBUTTONDOWN:               
+
                 # Forçar a ROI a ter 28x28 pixels a partir do ponto clicado
                 if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
                     roi_cropped = image[y:y+28, x:x+28]
@@ -117,17 +185,23 @@ def select_rois():
                                   (x + 28, y + 28), (0, 255, 0), 2)
                     cv2.imshow("Imagem", image_copy)
 
-                     #Define o nome do arquivo para salvar a ROI
-                    roi_file_name = f"roi_{x}_{y}.mat"  # Nome da ROI baseado na posição
-                    roi_save_path = os.path.join(os.getcwd() + "/", roi_file_name)
+                    click_count[0] += 1
 
-                    # Garantir que a ROI é convertida para float para ser salva no formato .mat
-                    roi_cropped_float = roi_cropped.astype(np.float32)
-                    
-                    # Salvando a ROI em um dicionário
-                    savemat(roi_save_path, {'roi': roi_cropped_float})
-                    print(f"ROI salva em: {roi_save_path}")
+                    # Se já foram feitos dois cliques (rim e fígado), parar o processo
+                    if click_count[0] >= 2:
+                        roi_figado = roi_cropped
+                        calc_HI(roi_rim,roi_figado)
+                        cv2.destroyAllWindows()
+                    else:
+                        roi_rim = roi_cropped
+                        # Atualiza a mensagem na interface para o próximo órgão
+                        message = "Clique para selecionar a ROI do Figado"
+                        image_with_message = image_copy.copy()
+                        show_message_on_image(image_with_message, message)
+                        cv2.imshow("Imagem", image_with_message)
 
+
+        show_message_on_image(image_copy, "Clique para selecionar a ROI do Rim")
 
         # Exibir a janela de imagem e configurar o evento de clique
         cv2.imshow("Imagem", image_copy)
@@ -161,8 +235,8 @@ load_images_button = Button(root, text='Vizualizar Imagens', command=load_file)
 load_images_button.pack(pady=10)
 
 # Load images (png / jpg) from computer [ BUTTON ]
-load_images_button = Button(root, text='Vizualizar ROIs', command=load_file(True))
-load_images_button.pack(pady=10)
+load_roi_button = Button(root, text='Vizualizar ROIs', command=lambda: load_file(True))
+load_roi_button.pack(pady=10)
 
 # Select ROI [ BUTTON ]
 roi_button = Button(root, text='Selecionar ROI', command=select_rois)
@@ -180,7 +254,6 @@ carac_button.pack(pady=10)
 classificar_button = Button(root, text='Classificar Imagem')
 classificar_button.pack(pady=10)
 
-# Next image [ BUTTON ]
 # Next image [ BUTTON ]
 next_image_button = Button(root, text='Próxima Imagem', command=next_image)
 next_image_button.pack(pady=10)
