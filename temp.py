@@ -25,19 +25,19 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 CURRENT_IMAGE_INDEX = 0
 IMAGES = None
 
-# Plot images along with histogram and ROI information
+# Plot images along with histogram
 
 
-def display_image_and_histogram(image, isROI=False, title="Imagem", parent=None):
+def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False):
     average_brightness = np.mean(image)
     fig, (ax_img, ax_hist) = plt.subplots(1, 2, figsize=(10, 5))
 
-    # Image Settings
+    # Configurações da Imagem
     ax_img.imshow(image, cmap='gray')
     ax_img.axis('off')
     ax_img.set_title(title)
 
-    # Histogram Settings
+    # Configurações do Histograma
     n, bins, patches = ax_hist.hist(
         image.ravel(), bins=256, color='gray', alpha=0.7)
     ax_hist.set_xlim([0, 255])
@@ -46,8 +46,8 @@ def display_image_and_histogram(image, isROI=False, title="Imagem", parent=None)
     ax_hist.set_xlabel('Intensidade de Pixel')
     ax_hist.set_ylabel('Frequência')
 
-    # If we're dealing with a ROI, we want to plot some characteristics along with the image
-    if (isROI):
+    # Se for uma ROI, exibir a linha da média
+    if isROI:
         ax_hist.axvline(average_brightness, color='red',
                         linestyle='dashed', linewidth=1)
         ax_hist.text(average_brightness + 5, max(n) * 0.9,
@@ -55,16 +55,26 @@ def display_image_and_histogram(image, isROI=False, title="Imagem", parent=None)
 
     plt.tight_layout()
 
-    # Embed image plots
+    # Incorporar o gráfico na interface
     if parent is not None:
         for widget in parent.winfo_children():
-            widget.destroy()  # Remove previous plot, if exists
+            widget.destroy()  # Remove plot anterior, se existir
 
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
-        canvas.get_tk_widget().pack(side=TOP, anchor="center", padx=10, pady=10)
+        canvas.get_tk_widget().pack(side=TOP, anchor="center",
+                                    padx=10, pady=10, expand=False)
 
-# Loading image files from computer supports the following file types: [.png/.jpg/.jpeg/.mat]
+
+def display_image(image, title="Imagem", parent=None):
+    # Chama a função genérica sem mostrar a linha de média
+    display_image_and_histogram(
+        image, title, parent, isROI=False)
+
+
+def display_roi(roi, title="ROI", parent=None):
+    # Chama a função genérica com a linha de média ativada
+    display_image_and_histogram(roi, title, parent, isROI=True)
 
 
 def load_file(isROI=False):
@@ -75,22 +85,31 @@ def load_file(isROI=False):
     )
 
     if file_path:
-        # Handling [.png/.jpg/.jpeg] files
         if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
             image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
-            display_image_and_histogram(
-                image, isROI, title="Imagem Local", parent=image_frame)
+            # Verifica se é uma ROI para chamar a função correta
+            if isROI:
+                display_roi(image, title="Imagem Local", parent=roi_frame)
+            else:
+                display_image(
+                    image, title="Imagem Local", parent=image_frame)
 
-        # Handling [.mat] files
         elif file_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(file_path)
-            data = mat['data']  # images are stored in 'data' key
+            data = mat['data']  # imagens são armazenadas na chave 'data'
             IMAGES = data[0, 0][-1]
             CURRENT_IMAGE_INDEX = 0
-            display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX], isROI,
-                                        title=f"Imagem {
-                                            CURRENT_IMAGE_INDEX + 1}",
-                                        parent=image_frame)
+            # Verifica se é uma ROI para chamar a função correta
+            if isROI:
+                display_roi(IMAGES[CURRENT_IMAGE_INDEX],
+                            title=f"Imagem {CURRENT_IMAGE_INDEX + 1}",
+                            parent=roi_frame)
+            else:
+                display_image(IMAGES[CURRENT_IMAGE_INDEX],
+                              title=f"Imagem {
+                    CURRENT_IMAGE_INDEX + 1}",
+                    parent=image_frame)
+
 
 # Skip to the next image in the current pagination
 
@@ -183,7 +202,8 @@ def select_rois():
 
     # Carregar a imagem
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", ".png;.jpg;")])
+        filetypes=[("Imagens", ".png;.jpg;")]
+    )
 
     if image_path:
         image = cv2.imread(image_path)
@@ -216,29 +236,37 @@ def select_rois():
                 if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
                     roi_cropped = image[y:y + 28, x:x + 28]
 
-                    # Mostrar a ROI selecionada no frame da interface
-                    display_image_and_histogram(
-                        roi_cropped, True, title="ROI Recortada (28x28)", parent=image_frame)
-
-                    # Desenhar o retângulo da ROI na imagem
-                    cv2.rectangle(image_copy, (x, y),
-                                  (x + 28, y + 28), (0, 255, 0), 2)
-                    ax.clear()  # Limpar o eixo para redesenhar a imagem com a ROI
-                    ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
-
-                    click_count[0] += 1
-
-                    # Se já foram feitos dois cliques (rim e fígado), parar o processo
-                    if click_count[0] >= 2:
-                        roi_figado = roi_cropped
-                        calc_HI(roi_rim, roi_figado)
-                    else:
+                    if click_count[0] == 0:
+                        # Primeira seleção: Rim
                         roi_rim = roi_cropped
-                        # Atualiza a mensagem para selecionar o fígado
+                        display_roi(roi_rim, title="ROI Rim (28x28)",
+                                    parent=roi_kidney_frame)
+
+                        # Desenhar o retângulo na imagem para o rim
+                        cv2.rectangle(image_copy, (x, y),
+                                      (x + 28, y + 28), (0, 255, 0), 2)
                         show_message_on_image(
                             ax, "Clique para selecionar a ROI do Figado")
 
+                    elif click_count[0] == 1:
+                        # Segunda seleção: Fígado
+                        roi_figado = roi_cropped
+                        display_roi(
+                            roi_figado, title="ROI Figado (28x28)", parent=roi_liver_frame)
+
+                        # Desenhar o retângulo na imagem para o fígado
+                        cv2.rectangle(image_copy, (x, y),
+                                      (x + 28, y + 28), (255, 0, 0), 2)
+
+                        # Função para cálculo de HI (depois de ambas as seleções)
+                        calc_HI(roi_rim, roi_figado)
+
+                    # Atualizar imagem com ROIs desenhadas
+                    ax.clear()
+                    ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
                     canvas.draw()
+
+                    click_count[0] += 1
 
         # Mensagem inicial
         show_message_on_image(ax, "Clique para selecionar a ROI do Rim")
@@ -256,7 +284,7 @@ customtkinter.set_default_color_theme(
 root = customtkinter.CTk()
 
 # Default Opening Settings
-root.geometry("1100x600")
+root.geometry("1760x960")
 root.title('Sistema Auxiliar de Diagnóstico da NAFLD')
 
 # Header
@@ -270,7 +298,7 @@ button_frame = Frame(root)
 button_frame.pack(pady=10)
 
 load_images_button = Button(
-    button_frame, text='Vizualizar Imagens', command=load_file)
+    button_frame, text='Carregar Imagens', command=load_file)
 load_images_button.grid(row=0, column=0, padx=5)  # Load files
 
 load_roi_button = Button(
@@ -299,8 +327,24 @@ next_image_button.grid(row=0, column=7, padx=5)  # Next Image Button
 
 # Buttons Grid ------------------- End
 
-image_frame = Frame(root, width=500, height=300,)
+image_frame = Frame(root, width=600, height=360)
 image_frame.pack(pady=10, padx=10)
+image_frame.pack_propagate(False)
+
+# ROIs Grid ------------------- Start
+
+roi_frame = Frame(root, width=1000, height=400)
+roi_frame.pack(pady=10, padx=10)
+
+roi_liver_frame = Frame(roi_frame, width=600, height=360)
+roi_liver_frame.grid(row=0, column=0)
+roi_liver_frame.pack_propagate(False)
+
+roi_kidney_frame = Frame(roi_frame, width=600, height=360)
+roi_kidney_frame.grid(row=0, column=1)
+roi_kidney_frame.pack_propagate(False)
+
+# ROIs Grid ------------------- End
 
 # GUI Loop
 root.mainloop()
