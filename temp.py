@@ -24,6 +24,9 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 # Global Variables -> Pagination
 CURRENT_IMAGE_INDEX = 0
 IMAGES = None
+IsLoadImage = True
+paciente = 0
+ultrassom = 0
 
 # Plot images along with histogram
 
@@ -78,7 +81,8 @@ def display_roi(roi, title="ROI", parent=None):
 
 
 def load_file(isROI=False):
-    global IMAGES, CURRENT_IMAGE_INDEX
+    global IMAGES, CURRENT_IMAGE_INDEX, IsLoadImage
+    IsLoadImage = True
 
     file_path = filedialog.askopenfilename(
         filetypes=[("Imagens e MAT", ".png;.jpg;*.mat")]
@@ -96,6 +100,7 @@ def load_file(isROI=False):
 
         elif file_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(file_path)
+            print(mat.keys())
             data = mat['data']  # imagens são armazenadas na chave 'data'
             IMAGES = data[0, 0][-1]
             CURRENT_IMAGE_INDEX = 0
@@ -119,9 +124,12 @@ def next_image():
 
     if IMAGES is not None and CURRENT_IMAGE_INDEX < IMAGES.shape[0] - 1:
         CURRENT_IMAGE_INDEX += 1
-        display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
+        if(IsLoadImage):
+            display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                     title=f"Imagem {CURRENT_IMAGE_INDEX + 1}",
                                     parent=image_frame)
+        else:
+            cut_rois(cv2.cvtColor(IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
     else:
         print("Não há mais imagens para mostrar.")
 
@@ -133,7 +141,8 @@ def previous_image():
 
     if IMAGES is not None and CURRENT_IMAGE_INDEX > 0:
         CURRENT_IMAGE_INDEX -= 1
-        display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
+        if(IsLoadImage):
+            display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                     title=f"Imagem {CURRENT_IMAGE_INDEX + 1}",
                                     parent=image_frame)
     else:
@@ -141,10 +150,27 @@ def previous_image():
 
 # ROI Calculations
 
+def save_custom_mat(paciente, ultrassom, roi_image):
+    # Nome do arquivo com base no paciente e ultrassom
+    file_name = f"roi_{paciente}_{ultrassom}.mat"
+    file_path = os.path.join(os.getcwd(), file_name)
+
+    roi_cropped_float = roi_image.astype(np.float32)
+
+    data_structure = np.array([[roi_cropped_float]]) 
+    
+    # Salvando no formato esperado
+    savemat(file_path, {'data': data_structure})
+    
+    if (ultrassom > 10):
+        paciente += 1
+        ultrassom = 0
+    else:
+        ultrassom += 1
+
 
 def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
-    paciente = 0
-    ultrassom = 0
+    global paciente, ultrassom
 
     average_rim = np.mean(roi_rim)
     average_figado = np.mean(roi_figado)
@@ -177,106 +203,93 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
     # Certifique-se de que os valores ajustados não excedam 255
     adjusted_roi_figado = np.clip(adjusted_roi_figado, 0, 255)
 
-    # Nome da ROI baseado na posição
-    roi_file_name = f"roi_{paciente}_{ultrassom}.mat"
-    roi_save_path = os.path.join(os.getcwd() + "/", roi_file_name)
-
-    # Garantir que a ROI é convertida para float para ser salva no formato .mat
-    roi_cropped_float = adjusted_roi_figado.astype(np.float32)
-
-    # Salvando a ROI em um dicionário
-    savemat(roi_save_path, {'roi': roi_cropped_float})
-
-    if (ultrassom > 10):
-        paciente += 1
-        ultrassom = 0
-    else:
-        ultrassom += 1
+    save_custom_mat(paciente, ultrassom, adjusted_roi_figado)
 
     show_hi_ratio_window(hi_ratio)
 
 # ROI -> Region of Interest
+def cut_rois(image):
+    image_copy = image.copy()
+    click_count = [0]
 
+    roi_rim = None
+    roi_figado = None
+    coord_rim = None
+    coord_figado = None
+
+    fig, ax = plt.subplots(figsize=(5, 5))
+    canvas = FigureCanvasTkAgg(fig, master=image_frame)
+    canvas.get_tk_widget().pack(pady=10, padx=10)
+
+    # Exibir a imagem original
+    ax.set_title("Clique para selecionar a ROI do Figado")
+    ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
+    canvas.draw()
+
+    def click_event(event):
+        nonlocal roi_rim, roi_figado, coord_figado, coord_rim
+
+        if event.inaxes == ax:  # Verificar se o clique foi dentro da imagem
+            x, y = int(event.xdata), int(event.ydata)
+
+            # Forçar a ROI a ter 28x28 pixels a partir do ponto clicado
+            if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
+                roi_cropped = image[y:y + 28, x:x + 28]
+
+                if click_count[0] == 0:
+                    # Primeira seleção: Fígado
+                    roi_figado = roi_cropped
+                    coord_figado = (x - 14, y - 14)
+                    display_roi(
+                        roi_figado, title="ROI Figado (28x28)", parent=roi_liver_frame)
+
+                    # Desenhar o retângulo na imagem para o fígado
+                    cv2.rectangle(image_copy, (x - 14, y - 14), (x + 14, y + 14), (0, 255, 0), 2)                    
+
+                elif click_count[0] == 1:
+                    # Segunda seleção: córtex renal
+                    roi_rim = roi_cropped
+                    coord_rim = (x - 14, y - 14)
+                    display_roi(roi_rim, title="ROI Rim (28x28)",
+                                    parent=roi_kidney_frame)
+
+                    # Desenhar o retângulo na imagem para o rim
+                    cv2.rectangle(image_copy, (x - 14, y - 14), (x + 14, y + 14), (0, 255, 0), 2)
+                        
+
+                    # Função para cálculo de HI (depois de ambas as seleções)
+                    calc_HI(roi_rim, roi_figado, coord_rim, coord_figado)
+
+                # Atualizar imagem com ROIs desenhadas
+                ax.clear()
+                ax.set_title("Clique para selecionar a ROI do cortex renal")
+                ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
+                canvas.draw()
+
+                click_count[0] += 1
+
+    # Conectar o evento de clique ao canvas
+    canvas.mpl_connect('button_press_event', click_event)
 
 def select_rois():
-    global image_frame, canvas
-
+    global IMAGES, CURRENT_IMAGE_INDEX, image_frame, canvas, IsLoadImage
+ 
+    IsLoadImage = False
     # Carregar a imagem
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", ".png;.jpg;")]
+        filetypes=[("Imagens", ".png;.jpg;*.mat")]
     )
 
     if image_path:
-        image = cv2.imread(image_path)
-        image_copy = image.copy()
-        click_count = [0]
-
-        roi_rim = None
-        roi_figado = None
-        coord_rim = None
-        coord_figado = None
-
-        fig, ax = plt.subplots(figsize=(5, 5))
-        canvas = FigureCanvasTkAgg(fig, master=image_frame)
-        canvas.get_tk_widget().pack(pady=10, padx=10)
-
-        # Exibir a imagem original
-        ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
-        canvas.draw()
-
-        def show_message_on_image(ax, message):           
-            ax.text(0.5, -0.1, message, fontsize=12, ha='center',
-                    transform=ax.transAxes, color='red')
-            canvas.draw()
-
-        def click_event(event):
-            nonlocal roi_rim, roi_figado, coord_figado, coord_rim
-
-            if event.inaxes == ax:  # Verificar se o clique foi dentro da imagem
-                x, y = int(event.xdata), int(event.ydata)
-
-                # Forçar a ROI a ter 28x28 pixels a partir do ponto clicado
-                if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
-                    roi_cropped = image[y:y + 28, x:x + 28]
-
-                    if click_count[0] == 0:
-                        # Primeira seleção: Fígado
-                        roi_figado = roi_cropped
-                        coord_figado = (x - 14, y - 14)
-                        display_roi(
-                            roi_figado, title="ROI Figado (28x28)", parent=roi_liver_frame)
-
-                        # Desenhar o retângulo na imagem para o fígado
-                        cv2.rectangle(image_copy, (x - 14, y - 14), (x + 14, y + 14), (0, 255, 0), 2)
-
-                        show_message_on_image(ax, "Clique para selecionar a ROI do cortex renal")
-
-                    elif click_count[0] == 1:
-                        # Segunda seleção: córtex renal
-                        roi_rim = roi_cropped
-                        coord_rim = (x - 14, y - 14)
-                        display_roi(roi_rim, title="ROI Rim (28x28)",
-                                    parent=roi_kidney_frame)
-
-                        # Desenhar o retângulo na imagem para o rim
-                        cv2.rectangle(image_copy, (x - 14, y - 14), (x + 14, y + 14), (0, 255, 0), 2)
-                        
-
-                        # Função para cálculo de HI (depois de ambas as seleções)
-                        calc_HI(roi_rim, roi_figado, coord_rim, coord_figado)
-
-                    # Atualizar imagem com ROIs desenhadas
-                    ax.clear()
-                    ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
-                    canvas.draw()
-
-                    click_count[0] += 1
-
-        # Mensagem inicial
-        show_message_on_image(ax, "Clique para selecionar a ROI do Figado")
-
-        # Conectar o evento de clique ao canvas
-        canvas.mpl_connect('button_press_event', click_event)
+        if image_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+           cut_rois(cv2.imread(image_path))
+        elif image_path.lower().endswith('.mat'):
+            mat = scipy.io.loadmat(image_path)
+            data = mat['data']  # imagens são armazenadas na chave 'data'
+            IMAGES = data[0, 0][-1]
+            CURRENT_IMAGE_INDEX = 0
+            cut_rois(cv2.cvtColor(IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
+        
 
 # ------------------------------------ GUI ----------------------------------------
 
