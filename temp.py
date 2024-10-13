@@ -14,6 +14,7 @@ from scipy.io import savemat
 import cv2
 import scipy.io
 import numpy as np
+from PIL import Image
 
 # Image Handling
 import matplotlib.pyplot as plt
@@ -99,8 +100,7 @@ def load_file(isROI=False):
                     image, title="Imagem Local", parent=image_frame)
 
         elif file_path.lower().endswith('.mat'):
-            mat = scipy.io.loadmat(file_path)
-            print(mat.keys())
+            mat = scipy.io.loadmat(file_path)           
             data = mat['data']  # imagens são armazenadas na chave 'data'
             IMAGES = data[0, 0][-1]
             CURRENT_IMAGE_INDEX = 0
@@ -120,7 +120,7 @@ def load_file(isROI=False):
 
 
 def next_image():
-    global CURRENT_IMAGE_INDEX
+    global CURRENT_IMAGE_INDEX, status_message
 
     if IMAGES is not None and CURRENT_IMAGE_INDEX < IMAGES.shape[0] - 1:
         CURRENT_IMAGE_INDEX += 1
@@ -131,13 +131,13 @@ def next_image():
         else:
             cut_rois(cv2.cvtColor(IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
     else:
-        print("Não há mais imagens para mostrar.")
+       status_message.config(text="Não há mais imagens para mostrar.")
 
 # Returns to the previous image in the current pagination
 
 
 def previous_image():
-    global CURRENT_IMAGE_INDEX
+    global CURRENT_IMAGE_INDEX, status_message  
 
     if IMAGES is not None and CURRENT_IMAGE_INDEX > 0:
         CURRENT_IMAGE_INDEX -= 1
@@ -146,21 +146,16 @@ def previous_image():
                                     title=f"Imagem {CURRENT_IMAGE_INDEX + 1}",
                                     parent=image_frame)
     else:
-        print("Não há imagens anteriores para mostrar.")
+       status_message.config(text="Não há imagens anteriores para mostrar.")
 
 # ROI Calculations
 
 def save_custom_mat(paciente, ultrassom, roi_image):
     # Nome do arquivo com base no paciente e ultrassom
-    file_name = f"roi_{paciente}_{ultrassom}.mat"
+    file_name = f"roi_{paciente}_{ultrassom}.png"
     file_path = os.path.join(os.getcwd(), file_name)
-
-    roi_cropped_float = roi_image.astype(np.float32)
-
-    data_structure = np.array([[roi_cropped_float]]) 
-    
-    # Salvando no formato esperado
-    savemat(file_path, {'data': data_structure})
+    image = Image.fromarray(roi_image)
+    image.save(file_path, 'PNG')
     
     if (ultrassom > 10):
         paciente += 1
@@ -343,6 +338,9 @@ next_image_button = Button(
 next_image_button.grid(row=0, column=7, padx=5)  # Next Image Button
 
 # Buttons Grid ------------------- End
+# Label para exibir mensagens de status
+status_message = Label(root, text='', font=('Arial', 12), fg='red')
+status_message.pack(pady=5)
 
 image_frame = Frame(root, width=600, height=360)
 image_frame.pack(pady=10, padx=10)
