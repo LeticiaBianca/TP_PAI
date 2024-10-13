@@ -85,7 +85,7 @@ def next_image():
         print("Não há mais imagens para mostrar.")
 
 #Calculos ROI
-def calc_HI(roi_rim, roi_figado):
+def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
     paciente = 0
     ultrassom = 0
 
@@ -94,14 +94,15 @@ def calc_HI(roi_rim, roi_figado):
 
     hi_ratio = average_figado / average_rim
 
-    def show_hi_ratio_window(hi_ratio):
+    def show_hi_ratio_window():
         # Cria uma nova janela
         hi_window = Toplevel(root)  # Usa Toplevel para criar uma nova janela
         hi_window.title("HI Ratio")
         hi_window.geometry("300x200")
 
-        # Adiciona um label com o hi_ratio
-        label = Label(hi_window, text=f"HI Ratio: {hi_ratio:.2f}", font=('Arial', 14))
+        label = Label(hi_window, text=f"HI Ratio: {hi_ratio:.2f}\n"
+                                      f"Coord. Rim: {coord_rim}\n"
+                                      f"Coord. Fígado: {coord_figado}", font=('Arial', 14))
         label.pack(pady=20)
 
         # Botão para fechar a janela
@@ -131,7 +132,7 @@ def calc_HI(roi_rim, roi_figado):
     else:   
         ultrassom+=1
 
-    show_hi_ratio_window(hi_ratio)
+    show_hi_ratio_window()
 
 # ROI -> Region of Interest
 
@@ -149,6 +150,8 @@ def select_rois():
 
         roi_rim = None  
         roi_figado = None  
+        coord_rim = None
+        coord_figado = None
 
         def show_message_on_image(image, message):
             font = cv2.FONT_HERSHEY_PLAIN
@@ -169,7 +172,7 @@ def select_rois():
 
        
         def click_event(event, x, y, flags, param):
-            nonlocal roi_rim, roi_figado 
+            nonlocal roi_rim, roi_figado, coord_rim, coord_figado
             if event == cv2.EVENT_LBUTTONDOWN:               
 
                 # Forçar a ROI a ter 28x28 pixels a partir do ponto clicado
@@ -181,8 +184,7 @@ def select_rois():
                         roi_cropped, True, title="ROI Recortada (28x28)")
 
                     # Desenhar a ROI na imagem original para visualização
-                    cv2.rectangle(image_copy, (x, y),
-                                  (x + 28, y + 28), (0, 255, 0), 2)
+                    cv2.rectangle(image_copy, (x - 14, y - 14), (x + 14, y + 14), (0, 255, 0), 2)
                     cv2.imshow("Imagem", image_copy)
 
                     click_count[0] += 1
@@ -190,10 +192,12 @@ def select_rois():
                     # Se já foram feitos dois cliques (rim e fígado), parar o processo
                     if click_count[0] >= 2:
                         roi_figado = roi_cropped
-                        calc_HI(roi_rim,roi_figado)
+                        coord_figado = (x - 14, y - 14)
+                        calc_HI(roi_rim,roi_figado,coord_rim, coord_figado)
                         cv2.destroyAllWindows()
                     else:
                         roi_rim = roi_cropped
+                        
                         # Atualiza a mensagem na interface para o próximo órgão
                         message = "Clique para selecionar a ROI do Figado"
                         image_with_message = image_copy.copy()
@@ -260,4 +264,3 @@ next_image_button.pack(pady=10)
 
 # GUI Loop
 root.mainloop()
-
