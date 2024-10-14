@@ -111,14 +111,22 @@ def load_file(isROI=False):
         # Handling [.mat] files
         elif file_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(file_path)
-            print(mat.keys())
-            data = mat['data']  # images are stored in 'data' key
-            IMAGES = data[0, 0][-1]
-            CURRENT_IMAGE_INDEX = 0
+            data = mat['data']  # Images are stored in 'data' key
+
+            IMAGES = []
+
+            for entry in data[0]:  # Images are stored in the last element of each entry
+                images_array = entry[-1]
+
+                if images_array is not None:
+                    for image in images_array:
+                        IMAGES.append(image)
+
+            CURRENT_IMAGE_INDEX = 0  # Start at the first image
 
             if isROI:  # Is it an ROI?
                 display_roi(IMAGES[CURRENT_IMAGE_INDEX],
-                            title=f"Imagem {CURRENT_IMAGE_INDEX + 1}",
+                            title=f"Imagem {CURRENT_IMAGE_INDEX}",
                             parent=roi_frame)
             else:
                 display_image(IMAGES[CURRENT_IMAGE_INDEX],
@@ -145,14 +153,15 @@ def destroy_plots():
 def next_image():
     global CURRENT_IMAGE_INDEX
 
-    if IMAGES is not None and CURRENT_IMAGE_INDEX < IMAGES.shape[0] - 1:
+    # Check if IMAGES is not empty and if there is a next image
+    if IMAGES is not None and CURRENT_IMAGE_INDEX < len(IMAGES) - 1:
         CURRENT_IMAGE_INDEX += 1
         destroy_plots()
 
         if IsLoadImage:  # Is it a regular image? Then display histogram
             display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                         title=f"Imagem {
-                                            CURRENT_IMAGE_INDEX + 1}",
+                                            CURRENT_IMAGE_INDEX}",
                                         parent=image_frame)
         else:  # Is it for selecting ROIs? Then display the image only in its fullsize
             cut_rois(cv2.cvtColor(
@@ -171,13 +180,13 @@ def previous_image():
         if IsLoadImage:  # Is it a regular image? Then display histogram
             display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                         title=f"Imagem {
-                                            CURRENT_IMAGE_INDEX + 1}",
+                                            CURRENT_IMAGE_INDEX}",
                                         parent=image_frame)
         else:  # Is it for selecting ROIs? Then display the image only in its fullsize
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
     else:
-        print("There are no more images to show.")
+        print("There are no previous images to show.")
 
 
 def reset_pagination():
@@ -196,7 +205,7 @@ def go_to_image():
         index = int(index_entry.get())
 
         # Check if the index is within the valid range
-        if IMAGES is not None and 0 <= index < IMAGES.shape[0]:
+        if IMAGES is not None and 0 <= index < len(IMAGES):
             CURRENT_IMAGE_INDEX = index
             destroy_plots()
 
@@ -204,14 +213,14 @@ def go_to_image():
             if IsLoadImage:  # Display image and histogram
                 display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                             title=f"Imagem {
-                                                CURRENT_IMAGE_INDEX + 1}",
+                                                CURRENT_IMAGE_INDEX}",
                                             parent=image_frame)
             else:  # Display full image for ROI selection
                 cut_rois(cv2.cvtColor(
                     IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
         else:
             print(f"Invalid index. Choose a value between 0 and {
-                  IMAGES.shape[0] - 1}.")
+                  len(IMAGES) - 1}.")
 
     except ValueError:
         print("Please enter a valid number.")
@@ -366,9 +375,18 @@ def select_rois():
             cut_rois(cv2.imread(image_path))
         elif image_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(image_path)
-            data = mat['data']  # imagens são armazenadas na chave 'data'
-            IMAGES = data[0, 0][-1]
-            CURRENT_IMAGE_INDEX = 0
+            data = mat['data']  # Images are stored in 'data' key
+
+            IMAGES = []
+
+            for entry in data[0]:  # Images are stored in the last element of each entry
+                images_array = entry[-1]
+
+                if images_array is not None:
+                    for image in images_array:
+                        IMAGES.append(image)
+
+            CURRENT_IMAGE_INDEX = 0  # Start at the first image
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
 
