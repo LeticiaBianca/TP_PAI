@@ -20,6 +20,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+from skimage.feature import graycomatrix, graycoprops
+from skimage.color import rgb2gray
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
 CURRENT_IMAGE_INDEX = 0  # Pagination
@@ -268,11 +270,6 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
                       f"Coord. Cortex Renal: {coord_rim}", font=('Arial', 14))
         label.pack(pady=20)
 
-        # Botão para fechar a janela
-        close_button = Button(hi_window, text="Fechar",
-                              command=hi_window.destroy)
-        close_button.pack(pady=10)
-
     adjusted_roi_figado = roi_figado * hi_ratio
 
     # Arredonda os valores
@@ -390,6 +387,94 @@ def select_rois():
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
 
+def calcular_glcm(roi, distancia, angulo):
+
+    if roi.ndim == 3:  # Checa se a imagem tem 3 dimensões (colorida)
+        roi = rgb2gray(roi)
+    roi = (roi * 255).astype(np.uint8)  # Normaliza a ROI para 256 níveis de cinza
+
+    glcm = np.zeros((256, 256), dtype=np.float32)
+
+    if angulo == 0:  # Horizontal
+        y_offset, x_offset = 0, distancia
+    elif angulo == 90:  # Vertical
+        y_offset, x_offset = distancia, 0
+    elif angulo == 45:  # Diagonal principal
+        y_offset, x_offset = distancia, distancia
+    elif angulo == 135:  # Diagonal secundária
+        y_offset, x_offset = distancia, -distancia
+    
+    for y in range(roi.shape[0]):
+        for x in range(roi.shape[1]):
+            # Coordenadas do pixel vizinho
+            y_n = y + y_offset
+            x_n = x + x_offset
+            
+            # Verifica se as coordenadas estão dentro da imagem
+            if y_n < roi.shape[0] and x_n < roi.shape[1]:
+                pixel1 = roi[y, x]
+                pixel2 = roi[y_n, x_n]
+                glcm[pixel1, pixel2] += 1
+
+    # Normaliza a GLCM
+    glcm = glcm / np.sum(glcm)
+    return glcm
+
+def calcular_homogeneidade(glcm):
+    homogeneidade = 0
+    for i in range(glcm.shape[0]):
+        for j in range(glcm.shape[1]):
+            homogeneidade += glcm[i, j] / (1 + abs(i - j))
+    return homogeneidade
+
+def calcular_entropia(glcm):
+    entropia = 0
+    for i in range(glcm.shape[0]):
+        for j in range(glcm.shape[1]):
+            if glcm[i, j] > 0:
+                entropia -= glcm[i, j] * np.log2(glcm[i, j])
+    return entropia
+
+def compute_matriz():
+    image_path = filedialog.askopenfilename(
+        filetypes=[("Imagens", ".png;.jpg;*.mat")]
+    )
+    if image_path:
+        i = [1,2,4,8]
+        angulo = [0,45,90,135]
+        descritores = []
+        for j in i:
+            for k in angulo:
+                glcm = calcular_glcm(cv2.imread(image_path), j, k)
+                homogeneidade = calcular_homogeneidade(glcm)
+                entropia =calcular_entropia(glcm)
+                descritores.append({
+                    'distancia': j,
+                    'angulo': k,
+                    'homogeneidade': homogeneidade,
+                    'entropia': entropia,
+                    'glcm': glcm  # Armazena a GLCM
+                })
+    
+    def show_descritores(descritores):
+        hi_window = Toplevel(root)  
+        hi_window.title("Descritores")
+        hi_window.geometry("400x300")
+        for desc in descritores:
+            # Formata a matriz de GLCM como uma string
+            #glcm_str = np.array2string(desc['glcm'], formatter={'float_kind':lambda x: f'{x:.4f}'})
+            
+            # Cria um texto para exibir os resultados
+            result_text = (f"Distância: {desc['distancia']}, Ângulo: {desc['angulo']}°\n"
+                        f"Homogeneidade: {desc['homogeneidade']:.4f}, Entropia: {desc['entropia']:.4f}\n")
+                        #f"GLCM:\n{glcm_str}\n\n")
+            
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=20)
+            #TODO adicionar scrollbar
+
+    show_descritores(descritores)
+
 # ------------------------------------ GUI ------------------------------------------
 
 
@@ -421,7 +506,7 @@ load_roi_button.grid(row=0, column=1, padx=5)  # Load files (ROI)
 roi_button = Button(button_frame, text='Selecionar ROI', command=select_rois)
 roi_button.grid(row=0, column=2, padx=5)  # Select ROI
 
-matriz_button = Button(button_frame, text='Computar Matriz de co-ocorrência')
+matriz_button = Button(button_frame, text='Computar Matriz de co-ocorrência', command=compute_matriz)
 matriz_button.grid(row=0, column=3, padx=5)
 
 carac_button = Button(button_frame, text='Caracterizar ROI')
