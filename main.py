@@ -96,11 +96,11 @@ def load_file(isROI=False):
     IsLoadImage = True
 
     file_path = filedialog.askopenfilename(
-        filetypes=[("Imagens e MAT", ".png;.jpg;*.mat")]
+        filetypes=[("Imagens e MAT", "*.png;*.jpg;*.mat")]
     )
 
     if file_path:  # Handling [.png/.jpg/.jpeg] files
-        if file_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+        if file_path.lower().endswith(('*.png', '*.jpg', '*.jpeg')):
             image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
 
             if isROI:  # Is it an ROI?
@@ -235,7 +235,7 @@ def go_to_image():
 def save_image(roi_image):
     global paciente, ultrassom
     # Nome do arquivo com base no paciente e ultrassom
-    file_name = f"roi_{paciente}_{ultrassom}.jpg"
+    file_name = f"roi_{str(paciente).zfill(2)}_{ultrassom}.jpg"
     file_path = os.path.join(os.getcwd(), file_name)
     image = Image.fromarray(roi_image)
     image.save(file_path, 'JPEG')
@@ -312,10 +312,10 @@ def cut_rois(image):
     def click_event(event):
         nonlocal roi_rim, roi_figado, coord_figado, coord_rim
 
-        if event.inaxes == ax:  # Verificar se o clique foi dentro da imagem
+        if event.inaxes == ax:
             x, y = int(event.xdata), int(event.ydata)
 
-            # Forçar a ROI a ter 28x28 pixels a partir do ponto clicado
+            # Forçar a ROI a ter 28x28
             if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
                 roi_cropped = image[y:y + 28, x:x + 28]
 
@@ -326,7 +326,6 @@ def cut_rois(image):
                     display_roi(
                         roi_figado, title="ROI Figado (28x28)", parent=roi_liver_frame)
 
-                    # Desenhar o retângulo na imagem para o fígado
                     cv2.rectangle(image_copy, (x - 14, y - 14),
                                   (x + 14, y + 14), (0, 255, 0), 2)
 
@@ -362,11 +361,11 @@ def select_rois():
     IsLoadImage = False
     # Carregar a imagem
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", ".png;.jpg;*.mat")]
+        filetypes=[("Imagens", "*.png;*.jpg;*.mat")]
     )
 
     if image_path:
-        if image_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+        if image_path.lower().endswith(('*.png', '*.jpg', '*.jpeg')):
             cut_rois(cv2.imread(image_path))
         elif image_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(image_path)
@@ -387,10 +386,6 @@ def select_rois():
 
 def calcular_glcm(roi, distancia, angulo):
 
-    if roi.ndim == 3:  # Checa se a imagem tem 3 dimensões (colorida)
-        roi = rgb2gray(roi)
-    roi = (roi * 255).astype(np.uint8)  # Normaliza a ROI para 256 níveis de cinza
-
     glcm = np.zeros((256, 256), dtype=np.float32)
 
     if angulo == 0:  # Horizontal
@@ -404,17 +399,14 @@ def calcular_glcm(roi, distancia, angulo):
     
     for y in range(roi.shape[0]):
         for x in range(roi.shape[1]):
-            # Coordenadas do pixel vizinho
-            y_n = y + y_offset
-            x_n = x + x_offset
+            y_neigh = y + y_offset
+            x_neigh = x + x_offset
             
-            # Verifica se as coordenadas estão dentro da imagem
-            if y_n < roi.shape[0] and x_n < roi.shape[1]:
+            if y_neigh < roi.shape[0] and x_neigh < roi.shape[1]:
                 pixel1 = roi[y, x]
-                pixel2 = roi[y_n, x_n]
+                pixel2 = roi[y_neigh, x_neigh]
                 glcm[pixel1, pixel2] += 1
 
-    # Normaliza a GLCM
     glcm = glcm / np.sum(glcm)
     return glcm
 
@@ -435,12 +427,13 @@ def calcular_entropia(glcm):
 
 def compute_matriz():
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", ".png;.jpg;*.mat")]
+        filetypes=[("Imagens", "*.png;*.jpg;*.jpeg")]
     )
     if image_path:
         i = [1,2,4,8]
-        angulo = [0,45,90,135]
+        angulo = [0,45,90,135]#verificar se precisa de todos esses angulos
         descritores = []
+
         for j in i:
             for k in angulo:
                 glcm = calcular_glcm(cv2.imread(image_path), j, k)
@@ -458,18 +451,30 @@ def compute_matriz():
         hi_window = Toplevel(root)  
         hi_window.title("Descritores")
         hi_window.geometry("400x300")
+
+        frame = Frame(hi_window)
+        frame.pack(fill='both', expand=True)
+
+        canvas = Canvas(frame)
+        canvas.pack(side='left', fill='both', expand=True)
+
+        scrollbar = Scrollbar(frame, orient='vertical', command=canvas.yview)
+        scrollbar.pack(side='right', fill='y')
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        label_frame = Frame(canvas)
+        canvas.create_window((0, 0), window=label_frame, anchor='nw')
+
         for desc in descritores:
-            # Formata a matriz de GLCM como uma string
-            #glcm_str = np.array2string(desc['glcm'], formatter={'float_kind':lambda x: f'{x:.4f}'})
-            
-            # Cria um texto para exibir os resultados
             result_text = (f"Distância: {desc['distancia']}, Ângulo: {desc['angulo']}°\n"
                         f"Homogeneidade: {desc['homogeneidade']:.4f}, Entropia: {desc['entropia']:.4f}\n")
-                        #f"GLCM:\n{glcm_str}\n\n")
             
-            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label = Label(label_frame, text=result_text, font=('Arial', 10))
             label.pack(pady=20)
-            #TODO adicionar scrollbar
+
+        label_frame.update_idletasks()  
+        canvas.config(scrollregion=canvas.bbox('all'))
 
     show_descritores(descritores)
 
