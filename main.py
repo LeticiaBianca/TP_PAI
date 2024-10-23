@@ -13,14 +13,13 @@ from tkinter import filedialog
 # Data Handling
 import cv2
 import scipy.io
-from scipy.io import savemat
+from PIL import Image
 import numpy as np
 
 # Image Plots
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from skimage.feature import graycomatrix, graycoprops
 from skimage.color import rgb2gray
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
@@ -233,13 +232,13 @@ def go_to_image():
 # Save[.mat] informations
 
 
-def save_custom_mat(paciente, ultrassom, roi_image):
-    file_name = f"roi_{paciente}_{ultrassom}.mat"
+def save_image(roi_image):
+    global paciente, ultrassom
+    # Nome do arquivo com base no paciente e ultrassom
+    file_name = f"roi_{paciente}_{ultrassom}.jpg"
     file_path = os.path.join(os.getcwd(), file_name)
-
-    roi_cropped_float = roi_image.astype(np.float32)
-    data_structure = np.array([[roi_cropped_float]])
-    savemat(file_path, {'data': data_structure})
+    image = Image.fromarray(roi_image)
+    image.save(file_path, 'JPEG')
 
     if (ultrassom > 10):
         paciente += 1
@@ -251,8 +250,7 @@ def save_custom_mat(paciente, ultrassom, roi_image):
 
 
 def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
-    global paciente, ultrassom
-
+    
     average_rim = np.mean(roi_rim)
     average_figado = np.mean(roi_figado)
 
@@ -279,7 +277,7 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
     # Certifique-se de que os valores ajustados não excedam 255
     adjusted_roi_figado = np.clip(adjusted_roi_figado, 0, 255)
 
-    save_custom_mat(paciente, ultrassom, adjusted_roi_figado)
+    save_image(adjusted_roi_figado)
 
     show_hi_ratio_window(hi_ratio)
 
@@ -475,6 +473,10 @@ def compute_matriz():
 
     show_descritores(descritores)
 
+def on_closing():
+    root.quit()
+    root.destroy()
+
 # ------------------------------------ GUI ------------------------------------------
 
 
@@ -489,6 +491,7 @@ root.title('Sistema Auxiliar de Diagnóstico da NAFLD')
 label = Label(
     root, text='Sistema Auxiliar de Diagnóstico da NAFLD', font=('Arial', 14))
 label.pack(pady=10)
+root.protocol("WM_DELETE_WINDOW", on_closing)
 
 # Buttons Grid ---------------------------------------------------------------- Start
 
