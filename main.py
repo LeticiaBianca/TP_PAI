@@ -16,6 +16,7 @@ import cv2
 import scipy.io
 from PIL import Image
 import numpy as np
+from scipy.ndimage import uniform_filter
 
 # Image Plots
 import matplotlib.pyplot as plt
@@ -502,7 +503,56 @@ def compute_matriz():
         
     show_descritores(descritores)
 
-   
+def tamura():
+    image_path = filedialog.askopenfilename(
+        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
+    )
+
+    if image_path:
+        coarseness = tamura_coarseness(image_path)
+        contrast = tamura_contrast(image_path)
+        directionality = tamura_directionality(image_path)
+        line_likeness = tamura_line_likeness(image_path)
+        regularity = tamura_regularity(image_path)
+        roughness = tamura_roughness(coarseness, contrast)
+
+def tamura_coarseness(img, k_max=5):
+    # AINDA PRECISA TESTAR!
+    # k_max (int): Maximum scale (2^k). Default is 5.
+
+    h, w = img.shape
+    # Create an array to store the maximum difference for each pixel
+    S_best = np.zeros((h, w))
+
+    # Iterate over scales 2^k (k from 1 to k_max)
+    for k in range(1, k_max + 1):
+        window_size = 2 ** k
+        
+        # Compute the local averages using a sliding window (uniform filter)
+        avg_kernel = uniform_filter(img, size=window_size, mode='reflect')
+        
+        # Compute the difference between neighboring regions in x and y directions
+        diff_x = np.abs(avg_kernel[:, :-window_size] - avg_kernel[:, window_size:])
+        diff_y = np.abs(avg_kernel[:-window_size, :] - avg_kernel[window_size:, :])
+        
+        # For each pixel, update S_best with the largest difference
+        S_best[:-window_size, :-window_size] = np.maximum(
+            S_best[:-window_size, :-window_size],
+            np.maximum(diff_x, diff_y)
+        )
+    
+    # The coarseness is the mean of S_best, which represents the coarseness for each pixel
+    return np.mean(S_best)
+    
+def tamura_contrast(img):
+
+def tamura_directionality(img):
+
+def tamura_line_likeness(img):
+
+def tamura_regularity(img):
+
+def tamura_roughness(img):
 
 def on_closing():
     root.quit()
@@ -547,6 +597,9 @@ carac_button = Button(button_frame, text='Caracterizar ROI')
 carac_button.grid(row=0, column=4, padx=5)
 
 classificar_button = Button(button_frame, text='Classificar Imagem')
+classificar_button.grid(row=0, column=5, padx=5)
+
+classificar_button = Button(button_frame, text='Descritores Tamura', command=tamura)
 classificar_button.grid(row=0, column=5, padx=5)
 
 previous_image_button = Button(
