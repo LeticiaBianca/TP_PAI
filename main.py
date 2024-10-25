@@ -1,6 +1,7 @@
 # Letícia Bianca Oliveira - 776782
 # Raick Miranda Rodrigues Santos - 781755
-# NT = (776782 + 781755) mod 4 = 1
+# Nathália Mascarenhas Tenaglia - 766430
+# NT = (776782 + 781755 + 766430) mod 4 = 3
 
 # ------------------------------------ LIBRARIES & MODULES --------------------------
 
@@ -20,7 +21,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from skimage.color import rgb2gray
+import pandas as pd
+
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
 CURRENT_IMAGE_INDEX = 0  # Pagination
@@ -31,6 +33,31 @@ paciente = 0
 ultrassom = 0
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
+def update_excel(nome_arquivo, nome_coluna, valor):
+   
+
+    file_path = "D:/faculdade/pai/TP_PAI/rois_informations.xlsx"
+
+    df = pd.read_excel(file_path)
+
+    if nome_arquivo not in df.iloc[:, 0].values:
+        print(f"O arquivo '{nome_arquivo}' não foi encontrado.")
+        return
+
+    if nome_coluna not in df.columns:
+        print(f"A coluna '{nome_coluna}' não foi encontrada.")
+        return
+
+    idx = df[df.iloc[:, 0] == nome_arquivo].index[0]
+    \
+    try:
+        df.at[idx, nome_coluna] = valor
+
+        df.to_excel(file_path, index=False)
+        print(f"Valor atualizado na célula correspondente ao arquivo '{nome_arquivo}' e coluna '{nome_coluna}'.")
+    except Exception as e:
+        print(f"Erro ao salvar o arquivo Excel: {idx}")
+        
 
 # Plot images along with histogram
 
@@ -235,7 +262,7 @@ def go_to_image():
 def save_image(roi_image):
     global paciente, ultrassom
     # Nome do arquivo com base no paciente e ultrassom
-    file_name = f"roi_{str(paciente).zfill(2)}_{ultrassom}.jpg"
+    file_name = f"ROI_{str(paciente).zfill(2)}_{ultrassom}.jpg"
     file_path = os.path.join(os.getcwd(), file_name)
     image = Image.fromarray(roi_image)
     image.save(file_path, 'JPEG')
@@ -257,16 +284,15 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
     hi_ratio = average_figado / average_rim
 
     def show_hi_ratio_window(hi_ratio):
-        # Cria uma nova janela
-        hi_window = Toplevel(root)  # Usa Toplevel para criar uma nova janela
+        hi_window = Toplevel(root)  
         hi_window.title("HI Ratio")
         hi_window.geometry("300x200")
 
-        # Adiciona um label com o hi_ratio
         label = Label(hi_window, text=f"HI Ratio: {hi_ratio:.2f}\n"
                       f"Coord. Fígado: {coord_figado}\n"
                       f"Coord. Cortex Renal: {coord_rim}", font=('Arial', 14))
         label.pack(pady=20)
+        
 
     adjusted_roi_figado = roi_figado * hi_ratio
 
@@ -276,10 +302,15 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
 
     # Certifique-se de que os valores ajustados não excedam 255
     adjusted_roi_figado = np.clip(adjusted_roi_figado, 0, 255)
-
+    
+    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}","Coordenadas Figado", f"{coord_figado[0]}, {coord_figado[1]}")
+    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}", "Coordenadas Cortex Renal", f"{coord_rim[0]}, {coord_rim[1]}")
+    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}", "HI",hi_ratio)
+    
     save_image(adjusted_roi_figado)
 
     show_hi_ratio_window(hi_ratio)
+    
 
 # ROI -> Region of Interest
 
@@ -384,28 +415,38 @@ def select_rois():
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
 
-def calcular_glcm(roi, distancia, angulo):
-
+def calcular_glcm(roi, distancia):
+    angles  = [0, 45, 90, 135, 180, 225, 270, 315]
     glcm = np.zeros((256, 256), dtype=np.float32)
 
-    if angulo == 0:  # Horizontal
-        y_offset, x_offset = 0, distancia
-    elif angulo == 90:  # Vertical
-        y_offset, x_offset = distancia, 0
-    elif angulo == 45:  # Diagonal principal
-        y_offset, x_offset = distancia, distancia
-    elif angulo == 135:  # Diagonal secundária
-        y_offset, x_offset = distancia, -distancia
+    for angle in angles:
+        # Calcular os deslocamentos para o ângulo atual
+        if angle == 0:      # Horizontal
+            y_offset, x_offset = 0, distancia
+        elif angle == 45:   # Diagonal principal
+            y_offset, x_offset = distancia, distancia
+        elif angle == 90:    # Vertical
+            y_offset, x_offset = distancia, 0
+        elif angle == 135:  # Diagonal secundária
+            y_offset, x_offset = distancia, -distancia
+        elif angle == 180:  # Horizontal (oposto)
+            y_offset, x_offset = 0, -distancia
+        elif angle == 225:  # Diagonal secundária (oposto)
+            y_offset, x_offset = -distancia, -distancia
+        elif angle == 270:  # Vertical (oposto)
+            y_offset, x_offset = -distancia, 0
+        elif angle == 315:  # Diagonal principal (oposto)
+            y_offset, x_offset = -distancia, distancia
     
-    for y in range(roi.shape[0]):
-        for x in range(roi.shape[1]):
-            y_neigh = y + y_offset
-            x_neigh = x + x_offset
-            
-            if y_neigh < roi.shape[0] and x_neigh < roi.shape[1]:
-                pixel1 = roi[y, x]
-                pixel2 = roi[y_neigh, x_neigh]
-                glcm[pixel1, pixel2] += 1
+        for y in range(roi.shape[0]):
+            for x in range(roi.shape[1]):
+                y_neigh = y + y_offset
+                x_neigh = x + x_offset
+                
+                if y_neigh < roi.shape[0] and x_neigh < roi.shape[1]:
+                    pixel1 = roi[y, x]
+                    pixel2 = roi[y_neigh, x_neigh]
+                    glcm[pixel1, pixel2] += 1
 
     glcm = glcm / np.sum(glcm)
     return glcm
@@ -431,52 +472,37 @@ def compute_matriz():
     )
     if image_path:
         i = [1,2,4,8]
-        angulo = [0,45,90,135]#verificar se precisa de todos esses angulos
+        
         descritores = []
 
         for j in i:
-            for k in angulo:
-                glcm = calcular_glcm(cv2.imread(image_path), j, k)
-                homogeneidade = calcular_homogeneidade(glcm)
-                entropia =calcular_entropia(glcm)
-                descritores.append({
-                    'distancia': j,
-                    'angulo': k,
-                    'homogeneidade': homogeneidade,
-                    'entropia': entropia,
-                    'glcm': glcm  # Armazena a GLCM
-                })
-    
+            glcm = calcular_glcm(cv2.imread(image_path), j)
+            homogeneidade = calcular_homogeneidade(glcm)
+            entropia =calcular_entropia(glcm)
+            descritores.append({
+                'distancia': j,
+                'homogeneidade': homogeneidade,
+                'entropia': entropia,
+                'glcm': glcm  # Armazena a GLCM
+            })
+            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropia}")
+            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{entropia}")
+                        
     def show_descritores(descritores):
         hi_window = Toplevel(root)  
         hi_window.title("Descritores")
         hi_window.geometry("400x300")
 
-        frame = Frame(hi_window)
-        frame.pack(fill='both', expand=True)
-
-        canvas = Canvas(frame)
-        canvas.pack(side='left', fill='both', expand=True)
-
-        scrollbar = Scrollbar(frame, orient='vertical', command=canvas.yview)
-        scrollbar.pack(side='right', fill='y')
-
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        label_frame = Frame(canvas)
-        canvas.create_window((0, 0), window=label_frame, anchor='nw')
-
         for desc in descritores:
-            result_text = (f"Distância: {desc['distancia']}, Ângulo: {desc['angulo']}°\n"
+            result_text = (f"Distância: {desc['distancia']}\n"
                         f"Homogeneidade: {desc['homogeneidade']:.4f}, Entropia: {desc['entropia']:.4f}\n")
             
-            label = Label(label_frame, text=result_text, font=('Arial', 10))
-            label.pack(pady=20)
-
-        label_frame.update_idletasks()  
-        canvas.config(scrollregion=canvas.bbox('all'))
-
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=5)
+        
     show_descritores(descritores)
+
+   
 
 def on_closing():
     root.quit()
@@ -586,3 +612,6 @@ roi_kidney_frame.pack_propagate(False)
 
 # Start the GUI Loop
 root.mainloop()
+
+
+
