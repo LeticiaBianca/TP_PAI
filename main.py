@@ -518,7 +518,7 @@ def tamura():
 
 def tamura_coarseness(img, k_max=5):
     # AINDA PRECISA TESTAR!
-    # k_max (int): Maximum scale (2^k). Default is 5.
+    # k_max (int): Maximum scale (2^k). default = 5.
 
     h, w = img.shape
     # Create an array to store the maximum difference for each pixel
@@ -542,17 +542,130 @@ def tamura_coarseness(img, k_max=5):
         )
     
     # The coarseness is the mean of S_best, which represents the coarseness for each pixel
-    return np.mean(S_best)
+    coarseness = np.mean(S_best)
+    return coarseness
     
 def tamura_contrast(img):
+    # Calculate the mean and standard deviation
+    mean = np.mean(img)
+    std_dev = np.std(img)
 
-def tamura_directionality(img):
+    # Calculate the fourth moment (kurtosis)
+    fourth_moment = np.mean((img - mean) ** 4)
+
+    # Calculate Tamura contrast
+    if std_dev != 0:
+        contrast = std_dev / (fourth_moment ** 0.25)
+    else:
+        contrast = 0  # Avoid division by zero
+
+    return contrast
+
+def tamura_directionality(img, num_bins=16):
+    # num_bins (int): defines how finely the angle range is divided into discrete intervals. default = 16
+    # Compute gradients along x and y directions
+    gx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+
+    # Calculate edge direction (angle) and magnitude
+    angles = np.arctan2(gy, gx)  # Edge direction in radians
+    magnitude = np.sqrt(gx**2 + gy**2)  # Gradient magnitude
+
+    # Convert angles from radians to degrees and map to [0, 180) for uniformity
+    angles_deg = np.degrees(angles) % 180
+
+    # Build a histogram of edge directions weighted by magnitude
+    hist, _ = np.histogram(angles_deg, bins=num_bins, range=(0, 180), weights=magnitude)
+
+    # Normalize the histogram
+    hist = hist / np.sum(hist)
+
+    # Calculate the directionality
+    # The directionality measure is highest when all directions align; it decreases with direction spread.
+    # Compute variance of histogram to measure spread around peak(s)
+    bin_centers = (np.arange(num_bins) + 0.5) * (180 / num_bins)
+    directionality = np.sum(hist * (bin_centers - np.sum(hist * bin_centers))**2)
+
+    return directionality
 
 def tamura_line_likeness(img):
+    h, w = img.shape
+    
+    # Compute gradients along x and y directions
+    gx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+    
+    # Calculate edge directions (in radians) and magnitude of gradient
+    angles = np.arctan2(gy, gx)  # Edge direction in radians
+    magnitude = np.sqrt(gx**2 + gy**2)  # Gradient magnitude
+
+    # Convert angles to degrees and wrap them in the range [0, 180)
+    angles_deg = np.degrees(angles) % 180
+
+    # Line-likeness calculation
+    line_likeness = 0
+    count = 0
+
+    # Neighborhood comparison to measure alignment (line-likeness)
+    for i in range(1, h - 1):
+        for j in range(1, w - 1):
+            if magnitude[i, j] > 0:
+                # Get the angle of the central pixel
+                central_angle = angles_deg[i, j]
+                aligned_neighbors = 0
+                
+                # Check alignment with 8 neighboring pixels
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        if di == 0 and dj == 0:
+                            continue  # Skip the center pixel
+                        neighbor_angle = angles_deg[i + di, j + dj]
+                        
+                        # Calculate angular difference
+                        angle_diff = abs(central_angle - neighbor_angle)
+                        angle_diff = min(angle_diff, 180 - angle_diff)
+                        
+                        # Count as aligned if difference is below threshold
+                        if angle_diff < 20:  # Threshold for alignment
+                            aligned_neighbors += 1
+                
+                # Line-likeness for this pixel
+                line_likeness += aligned_neighbors / 8
+                count += 1
+
+    # to avoid division by zero
+    if count > 0:
+        return line_likeness / count
+    else:
+        return 0
 
 def tamura_regularity(img):
+    # Step 1: Calculate Tamura texture features
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+    directionality = tamura_directionality(img)
+    line_likeness = tamura_line_likeness(img)
+
+    # Step 2: Calculate variability (standard deviation) of each feature
+    # (In practice, we would calculate this across multiple images or regions if available)
+    std_devs = np.array([np.std([coarseness]), 
+                         np.std([contrast]), 
+                         np.std([directionality]), 
+                         np.std([line_likeness])])
+    
+    # Step 3: Calculate regularity by summing the inverse of standard deviations
+    regularity = np.sum(1 / (std_devs + 1e-6))  # Add a small value to avoid division by zero
+
+    return regularity
 
 def tamura_roughness(img):
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+    
+    # Compute roughness as the product of coarseness and contrast
+    roughness = coarseness * contrast
+    
+    return roughness
 
 def on_closing():
     root.quit()
