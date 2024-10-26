@@ -535,28 +535,29 @@ def tamura():
 def tamura_coarseness(img, k_max=5):
     # k_max (int): max scale (2^k)
 
-    h, w = img.shape
-    # create array to store the max difference for each pixel
-    S_best = np.zeros((h, w))
+    # Prepare the array to store the average differences
+    A = np.zeros((img.shape[0], img.shape[1], k_max))
 
-    # iterate over scales 2^k
-    for k in range(1, k_max + 1):
+    # Calculate the average difference for each scale k
+    for k in range(k_max):
         window_size = 2 ** k
-        
-        # local averages
-        avg_kernel = uniform_filter(img, size=window_size, mode='reflect')
-        
-        # difference between neighboring regions in x and y
-        diff_x = np.abs(avg_kernel[:, :-window_size] - avg_kernel[:, window_size:])
-        diff_y = np.abs(avg_kernel[:-window_size, :] - avg_kernel[window_size:, :])
+        shifted_img_right = np.roll(img, -window_size, axis=1)
+        shifted_img_left = np.roll(img, window_size, axis=1)
+        shifted_img_up = np.roll(img, -window_size, axis=0)
+        shifted_img_down = np.roll(img, window_size, axis=0)
 
-        S_best[:-window_size, :-window_size] = np.maximum(
-            S_best[:-window_size, :-window_size],
-            np.maximum(diff_x, diff_y)
-        )
+        # Difference calculation along x-axis and y-axis
+        S_x = np.abs(img - shifted_img_right) + np.abs(img - shifted_img_left)
+        S_y = np.abs(img - shifted_img_up) + np.abs(img - shifted_img_down)
 
-    coarseness = np.mean(S_best)
-    return coarseness
+        # Store the average differences for scale k
+        A[:, :, k] = (S_x + S_y) / 2
+
+    # Find the scale with the maximum difference at each pixel
+    F_coarseness = np.max(A, axis=2)
+
+    # Return the mean coarseness
+    return np.mean(F_coarseness)
     
 def tamura_contrast(img):
     # mean and standard deviation
