@@ -16,6 +16,7 @@ import cv2
 import scipy.io
 from PIL import Image
 import numpy as np
+from scipy.ndimage import uniform_filter
 
 # Image Plots
 import matplotlib.pyplot as plt
@@ -36,7 +37,7 @@ ultrassom = 0
 def update_excel(nome_arquivo, nome_coluna, valor):
    
 
-    file_path = "D:/faculdade/pai/TP_PAI/rois_informations.xlsx"
+    file_path = "rois_informations.xlsx"
 
     df = pd.read_excel(file_path)
 
@@ -123,7 +124,7 @@ def load_file(isROI=False):
     IsLoadImage = True
 
     file_path = filedialog.askopenfilename(
-        filetypes=[("Imagens e MAT", "*.png;*.jpg;*.mat")]
+        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
     )
 
     if file_path:  # Handling [.png/.jpg/.jpeg] files
@@ -392,7 +393,7 @@ def select_rois():
     IsLoadImage = False
     # Carregar a imagem
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg;*.mat")]
+        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
     )
 
     if image_path:
@@ -468,7 +469,7 @@ def calcular_entropia(glcm):
 
 def compute_matriz():
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg;*.jpeg")]
+        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
     )
     if image_path:
         i = [1,2,4,8]
@@ -502,7 +503,170 @@ def compute_matriz():
         
     show_descritores(descritores)
 
-   
+def tamura():
+    image_path = filedialog.askopenfilename(
+        filetypes=[("JPG", "*.jpg"), ("MAT files", "*.mat")]
+    )
+
+    if image_path:
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+        if img is None:
+            print("Error: Could not load image.")
+            return
+
+        coarseness = tamura_coarseness(img)
+        contrast = tamura_contrast(img)
+        directionality = tamura_directionality(img)
+        line_likeness = tamura_line_likeness(img)
+        regularity = tamura_regularity(img)
+        roughness = tamura_roughness(img)
+
+        print("Tamura Features:")
+        print(f"Coarseness: {coarseness}")
+        print(f"Contrast: {contrast}")
+        print(f"Directionality: {directionality}")
+        print(f"Line-Likeness: {line_likeness}")
+        print(f"Regularity: {regularity}")
+        print(f"Roughness: {roughness}")
+
+    
+
+def tamura_coarseness(img, k_max=5):
+    # k_max (int): max scale (2^k)
+
+    # Prepare the array to store the average differences
+    A = np.zeros((img.shape[0], img.shape[1], k_max))
+
+    # Calculate the average difference for each scale k
+    for k in range(k_max):
+        window_size = 2 ** k
+        shifted_img_right = np.roll(img, -window_size, axis=1)
+        shifted_img_left = np.roll(img, window_size, axis=1)
+        shifted_img_up = np.roll(img, -window_size, axis=0)
+        shifted_img_down = np.roll(img, window_size, axis=0)
+
+        # Difference calculation along x-axis and y-axis
+        S_x = np.abs(img - shifted_img_right) + np.abs(img - shifted_img_left)
+        S_y = np.abs(img - shifted_img_up) + np.abs(img - shifted_img_down)
+
+        # Store the average differences for scale k
+        A[:, :, k] = (S_x + S_y) / 2
+
+    # Find the scale with the maximum difference at each pixel
+    F_coarseness = np.max(A, axis=2)
+
+    # Return the mean coarseness
+    return np.mean(F_coarseness)
+    
+def tamura_contrast(img):
+    # mean and standard deviation
+    mean = np.mean(img)
+    std_dev = np.std(img)
+
+    fourth_moment = np.mean((img - mean) ** 4)
+
+    # to avoid division by zero
+    if std_dev != 0:
+        contrast = std_dev / (fourth_moment ** 0.25)
+    else:
+        contrast = 0 
+
+    return contrast
+
+def tamura_directionality(img, num_bins=16):
+    # num_bins (int): defines how finely the angle range is divided into discrete intervals
+    gx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+
+    # angle and magnitude
+    angles = np.arctan2(gy, gx)
+    magnitude = np.sqrt(gx**2 + gy**2)
+
+    # convert radians to degrees
+    angles_deg = np.degrees(angles) % 180
+
+    # histogram of edge directions weighted by magnitude
+    hist, _ = np.histogram(angles_deg, bins=num_bins, range=(0, 180), weights=magnitude)
+    hist = hist / np.sum(hist)
+
+    # calc directionality
+    bin_centers = (np.arange(num_bins) + 0.5) * (180 / num_bins)
+    directionality = np.sum(hist * (bin_centers - np.sum(hist * bin_centers))**2)
+
+    return directionality
+
+def tamura_line_likeness(img):
+    h, w = img.shape
+    
+    # gradients on x and y directions
+    gx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+    gy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
+    
+    # angle and magnitude
+    angles = np.arctan2(gy, gx)
+    magnitude = np.sqrt(gx**2 + gy**2)
+
+    # convert radians to degrees
+    angles_deg = np.degrees(angles) % 180
+
+    line_likeness = 0
+    count = 0
+
+    # calc line-likeness
+    for i in range(1, h - 1):
+        for j in range(1, w - 1):
+            if magnitude[i, j] > 0:
+                # get angle of central pixel
+                central_angle = angles_deg[i, j]
+                aligned_neighbors = 0
+                
+                # check alignment with 8 neighbor pixels
+                for di in [-1, 0, 1]:
+                    for dj in [-1, 0, 1]:
+                        if di == 0 and dj == 0:
+                            continue  # skip central pixel
+                        neighbor_angle = angles_deg[i + di, j + dj]
+
+                        angle_diff = abs(central_angle - neighbor_angle)
+                        angle_diff = min(angle_diff, 180 - angle_diff)
+
+                        if angle_diff < 20: 
+                            aligned_neighbors += 1
+                
+                line_likeness += aligned_neighbors / 8
+                count += 1
+
+    # to avoid division by zero
+    if count > 0:
+        return line_likeness / count
+    else:
+        return 0
+
+def tamura_regularity(img):
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+    directionality = tamura_directionality(img)
+    line_likeness = tamura_line_likeness(img)
+
+    # standard deviation
+    std_devs = np.array([np.std([coarseness]), 
+                         np.std([contrast]), 
+                         np.std([directionality]), 
+                         np.std([line_likeness])])
+    
+    # calc sum inverse of standard deviations
+    regularity = np.sum(1 / (std_devs + 1e-6))
+
+    return regularity
+
+def tamura_roughness(img):
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+
+    roughness = coarseness * contrast
+    
+    return roughness
 
 def on_closing():
     root.quit()
@@ -547,6 +711,9 @@ carac_button = Button(button_frame, text='Caracterizar ROI')
 carac_button.grid(row=0, column=4, padx=5)
 
 classificar_button = Button(button_frame, text='Classificar Imagem')
+classificar_button.grid(row=0, column=5, padx=5)
+
+classificar_button = Button(button_frame, text='Descritores Tamura', command=tamura)
 classificar_button.grid(row=0, column=5, padx=5)
 
 previous_image_button = Button(
