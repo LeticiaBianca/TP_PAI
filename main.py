@@ -16,7 +16,6 @@ import cv2
 import scipy.io
 from PIL import Image
 import numpy as np
-from scipy.ndimage import uniform_filter
 
 # Image Plots
 import matplotlib.pyplot as plt
@@ -30,19 +29,19 @@ CURRENT_IMAGE_INDEX = 0  # Pagination
 IMAGES = None
 
 IsLoadImage = True
-paciente = 0
+paciente = 28
 ultrassom = 0
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(nome_arquivo, nome_coluna, valor):
    
-    file_name = "TP_PAI/rois_informations.xlsx"
+    file_name = "rois_informations.xlsx"
     file_path = os.path.join(os.getcwd(), file_name)
 
     df = pd.read_excel(file_path)
 
     if nome_arquivo not in df.iloc[:, 0].values:
-        print(f"O arquivo '{nome_arquivo}' não foi encontrado.")
+        print(f"A linha '{nome_arquivo}' não foi encontrado.")
         return
 
     if nome_coluna not in df.columns:
@@ -268,7 +267,7 @@ def save_image(roi_image):
     image = Image.fromarray(roi_image)
     image.save(file_path, 'JPEG')
 
-    if (ultrassom > 10):
+    if (ultrassom == 9):
         paciente += 1
         ultrassom = 0
     else:
