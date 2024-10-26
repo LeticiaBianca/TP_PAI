@@ -124,7 +124,7 @@ def load_file(isROI=False):
     IsLoadImage = True
 
     file_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
+        filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
 
     if file_path:  # Handling [.png/.jpg/.jpeg] files
@@ -393,7 +393,7 @@ def select_rois():
     IsLoadImage = False
     # Carregar a imagem
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
+        filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
 
     if image_path:
@@ -469,7 +469,7 @@ def calcular_entropia(glcm):
 
 def compute_matriz():
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
+        filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
     if image_path:
         i = [1,2,4,8]
@@ -505,7 +505,7 @@ def compute_matriz():
 
 def tamura():
     image_path = filedialog.askopenfilename(
-        filetypes=[("JPG", "*.jpg"), ("MAT files", "*.mat")]
+        filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
 
     if image_path:
