@@ -36,8 +36,8 @@ ultrassom = 0
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(nome_arquivo, nome_coluna, valor):
    
-
-    file_path = "rois_informations.xlsx"
+    file_name = "TP_PAI/rois_informations.xlsx"
+    file_path = os.path.join(os.getcwd(), file_name)
 
     df = pd.read_excel(file_path)
 
@@ -522,15 +522,30 @@ def tamura():
         regularity = tamura_regularity(img)
         roughness = tamura_roughness(img)
 
-        print("Tamura Features:")
-        print(f"Coarseness: {coarseness}")
-        print(f"Contrast: {contrast}")
-        print(f"Directionality: {directionality}")
-        print(f"Line-Likeness: {line_likeness}")
-        print(f"Regularity: {regularity}")
-        print(f"Roughness: {roughness}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"coarseness",f"{coarseness}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"contrast",f"{contrast}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"directionality",f"{directionality}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"line-likeness",f"{line_likeness}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"regularity",f"{regularity}")
+        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"roughness",f"{roughness}")
+             
+        def show_tamura():
+            hi_window = Toplevel(root)  
+            hi_window.title("Descritores")
+            hi_window.geometry("400x300")
 
-    
+            result_text = (f"Tamura Features:\n"
+                            f"Coarseness: {coarseness:.4f}\n"
+                            f"Contrast: {contrast:.4f}\n"
+                            f"Directionality: {directionality:.4f}\n"
+                            f"Line-Likeness: {line_likeness:.4f}\n"
+                            f"Regularity: {regularity:.4f}\n"
+                            f"Roughness: {roughness:.4f}\n")
+                
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=5)   
+
+        show_tamura()
 
 def tamura_coarseness(img, k_max=5):
     # k_max (int): max scale (2^k)
@@ -707,13 +722,10 @@ roi_button.grid(row=0, column=2, padx=5)  # Select ROI
 matriz_button = Button(button_frame, text='Computar Matriz de co-ocorrência', command=compute_matriz)
 matriz_button.grid(row=0, column=3, padx=5)
 
-carac_button = Button(button_frame, text='Caracterizar ROI')
-carac_button.grid(row=0, column=4, padx=5)
+tamura_button = Button(button_frame, text='Descritores Tamura', command=tamura)
+tamura_button.grid(row=0, column=4, padx=5)
 
 classificar_button = Button(button_frame, text='Classificar Imagem')
-classificar_button.grid(row=0, column=5, padx=5)
-
-classificar_button = Button(button_frame, text='Descritores Tamura', command=tamura)
 classificar_button.grid(row=0, column=5, padx=5)
 
 previous_image_button = Button(
@@ -779,6 +791,3 @@ roi_kidney_frame.pack_propagate(False)
 
 # Start the GUI Loop
 root.mainloop()
-
-
-
