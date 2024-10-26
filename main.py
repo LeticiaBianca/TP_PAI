@@ -37,7 +37,7 @@ ultrassom = 0
 def update_excel(nome_arquivo, nome_coluna, valor):
    
 
-    file_path = "D:/faculdade/pai/TP_PAI/rois_informations.xlsx"
+    file_path = "rois_informations.xlsx"
 
     df = pd.read_excel(file_path)
 
@@ -505,16 +505,32 @@ def compute_matriz():
 
 def tamura():
     image_path = filedialog.askopenfilename(
-        filetypes=[("Imagens", "*.png;*.jpg"), ("MAT files", "*.mat")]
+        filetypes=[("JPG", "*.jpg"), ("MAT files", "*.mat")]
     )
 
     if image_path:
-        coarseness = tamura_coarseness(image_path)
-        contrast = tamura_contrast(image_path)
-        directionality = tamura_directionality(image_path)
-        line_likeness = tamura_line_likeness(image_path)
-        regularity = tamura_regularity(image_path)
-        roughness = tamura_roughness(coarseness, contrast)
+        img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+        if img is None:
+            print("Error: Could not load image.")
+            return
+
+        coarseness = tamura_coarseness(img)
+        contrast = tamura_contrast(img)
+        directionality = tamura_directionality(img)
+        line_likeness = tamura_line_likeness(img)
+        regularity = tamura_regularity(img)
+        roughness = tamura_roughness(img)
+
+        print("Tamura Features:")
+        print(f"Coarseness: {coarseness}")
+        print(f"Contrast: {contrast}")
+        print(f"Directionality: {directionality}")
+        print(f"Line-Likeness: {line_likeness}")
+        print(f"Regularity: {regularity}")
+        print(f"Roughness: {roughness}")
+
+    
 
 def tamura_coarseness(img, k_max=5):
     # k_max (int): max scale (2^k)
