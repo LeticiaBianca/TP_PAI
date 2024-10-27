@@ -11,13 +11,13 @@ import customtkinter
 from tkinter import *
 from tkinter import filedialog
 
-# Data Handling
+# data handler
 import cv2
 import scipy.io
 from PIL import Image
 import numpy as np
 
-# Image Plots
+# image plots
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
@@ -25,53 +25,51 @@ import pandas as pd
 
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
-CURRENT_IMAGE_INDEX = 0  # Pagination
+CURRENT_IMAGE_INDEX = 0  # pagination
 IMAGES = None
 
 IsLoadImage = True
-paciente = 28
-ultrassom = 0
+patient = 0
+ultrasound = 0
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
-def update_excel(nome_arquivo, nome_coluna, valor):
+def update_excel(file_name, column, value):
    
     file_name = "rois_informations.xlsx"
     file_path = os.path.join(os.getcwd(), file_name)
 
     df = pd.read_excel(file_path)
 
-    if nome_arquivo not in df.iloc[:, 0].values:
-        print(f"A linha '{nome_arquivo}' não foi encontrado.")
+    if file_name not in df.iloc[:, 0].values:
+        print(f"O arquivo '{file_name}' não foi encontrado.")
         return
 
-    if nome_coluna not in df.columns:
-        print(f"A coluna '{nome_coluna}' não foi encontrada.")
+    if column not in df.columns:
+        print(f"A coluna '{column}' não foi encontrada.")
         return
 
-    idx = df[df.iloc[:, 0] == nome_arquivo].index[0]
+    idx = df[df.iloc[:, 0] == file_name].index[0]
     \
     try:
-        df.at[idx, nome_coluna] = valor
+        df.at[idx, column] = value
 
         df.to_excel(file_path, index=False)
-        print(f"Valor atualizado na célula correspondente ao arquivo '{nome_arquivo}' e coluna '{nome_coluna}'.")
+        print(f"Valor atualizado na célula correspondente ao arquivo '{file_name}' e coluna '{column}'.")
     except Exception as e:
         print(f"Erro ao salvar o arquivo Excel: {idx}")
         
 
-# Plot images along with histogram
-
-
+# plot images with histogram
 def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False):
     average_brightness = np.mean(image)
     fig, (ax_img, ax_hist) = plt.subplots(1, 2, figsize=(10, 5))
 
-    # Image Settings
+    # image settings
     ax_img.imshow(image, cmap='gray')
     ax_img.axis('off')
     ax_img.set_title(title)
 
-    # Histogram Settings
+    # histogram settings
     n, bins, patches = ax_hist.hist(
         image.ravel(), bins=256, color='gray', alpha=0.7)
     ax_hist.set_xlim([0, 255])
@@ -80,7 +78,7 @@ def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False)
     ax_hist.set_xlabel('Intensidade de Pixel')
     ax_hist.set_ylabel('Frequência')
 
-    # If it's an ROI, display the average brightness line
+    # if not ROI display average brightness line
     if isROI:
         ax_hist.axvline(average_brightness, color='red',
                         linestyle='dashed', linewidth=1)
@@ -89,18 +87,16 @@ def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False)
 
     plt.tight_layout()
 
-    # Embed image plots
+    # add image plots
     if parent is not None:
         for widget in parent.winfo_children():
-            widget.destroy()  # Remove previous plot, if exists
+            widget.destroy()  # remove previous plot
 
-        # Canvas
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         canvas.get_tk_widget().pack(side=TOP, anchor="center",
                                     padx=10, pady=10, fill="both", expand=True)
 
-        # Toolbar
         toolbar_frame = Frame(parent)
         toolbar_frame.pack(side=TOP, anchor="center", padx=10, pady=10)
         toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
@@ -108,16 +104,14 @@ def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False)
 
 
 def display_image(image, title="Imagem", parent=None):
-    display_image_and_histogram(  # Regular images
+    display_image_and_histogram(
         image, title, parent, isROI=False)
 
 
-def display_roi(roi, title="ROI", parent=None):  # ROI images
+def display_roi(roi, title="ROI", parent=None):
     display_image_and_histogram(roi, title, parent, isROI=True)
 
-# Load image files from computer
-
-
+# load image files from pc
 def load_file(isROI=False):
     global IMAGES, CURRENT_IMAGE_INDEX, IsLoadImage
     IsLoadImage = True
@@ -126,33 +120,34 @@ def load_file(isROI=False):
         filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
 
-    if file_path:  # Handling [.png/.jpg/.jpeg] files
+    if file_path:  
+        # .png,.jpg,.jpeg files
         if file_path.lower().endswith(('*.png', '*.jpg', '*.jpeg')):
             image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
 
-            if isROI:  # Is it an ROI?
+            if isROI: 
                 display_roi(image, title="Imagem Local", parent=roi_frame)
             else:
                 display_image(
                     image, title="Imagem Local", parent=image_frame)
 
-        # Handling [.mat] files
+        # .mat files
         elif file_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(file_path)
-            data = mat['data']  # Images are stored in 'data' key
+            data = mat['data']
 
             IMAGES = []
 
-            for entry in data[0]:  # Images are stored in the last element of each entry
+            for entry in data[0]:  # images are in the last element of entry
                 images_array = entry[-1]
 
                 if images_array is not None:
                     for image in images_array:
                         IMAGES.append(image)
 
-            CURRENT_IMAGE_INDEX = 0  # Start at the first image
+            CURRENT_IMAGE_INDEX = 0  # start at the first image
 
-            if isROI:  # Is it an ROI?
+            if isROI:
                 display_roi(IMAGES[CURRENT_IMAGE_INDEX],
                             title=f"Imagem {CURRENT_IMAGE_INDEX}",
                             parent=roi_frame)
@@ -175,27 +170,25 @@ def destroy_plots():
 
 # ----------------------------- PAGINATION ------------------------------------------
 
-# Skip to the next image in the current pagination
-
-
+# skip to the next image in the current pagination
 def next_image():
     global CURRENT_IMAGE_INDEX
 
-    # Check if IMAGES is not empty and if there is a next image
+    # if IMAGES is not empty and if there is a next image
     if IMAGES is not None and CURRENT_IMAGE_INDEX < len(IMAGES) - 1:
         CURRENT_IMAGE_INDEX += 1
         destroy_plots()
 
-        if IsLoadImage:  # Is it a regular image? Then display histogram
+        if IsLoadImage:  # if regular image display histogram
             display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                         title=f"Imagem {
                                             CURRENT_IMAGE_INDEX}",
                                         parent=image_frame)
-        else:  # Is it for selecting ROIs? Then display the image only in its fullsize
+        else:  # if ROI display the image in fullsize
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
     else:
-        print("There are no more images to show.")
+        print("Não há mais imagens.")
 
 
 def previous_image():
@@ -205,22 +198,22 @@ def previous_image():
         CURRENT_IMAGE_INDEX -= 1
         destroy_plots()
 
-        if IsLoadImage:  # Is it a regular image? Then display histogram
+        if IsLoadImage:  # if regular image display histogram
             display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                         title=f"Imagem {
                                             CURRENT_IMAGE_INDEX}",
                                         parent=image_frame)
-        else:  # Is it for selecting ROIs? Then display the image only in its fullsize
+        else:  # if ROI display the image in fullsize
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
     else:
-        print("There are no previous images to show.")
+        print("Não há mais imagens.")
 
 
 def reset_pagination():
     global CURRENT_IMAGE_INDEX
 
-    # Reset index & destroy plots
+    # reset index & destroy plots
     CURRENT_IMAGE_INDEX = 0
     destroy_plots()
 
@@ -229,59 +222,53 @@ def go_to_image():
     global CURRENT_IMAGE_INDEX
 
     try:
-        # Get the index from the input field
         index = int(index_entry.get())
 
-        # Check if the index is within the valid range
+        # check if index is valid
         if IMAGES is not None and 0 <= index < len(IMAGES):
             CURRENT_IMAGE_INDEX = index
             destroy_plots()
 
-            # Display image and histogram or allow ROI selection
-            if IsLoadImage:  # Display image and histogram
+            if IsLoadImage:  # if regular image display histogram
                 display_image_and_histogram(IMAGES[CURRENT_IMAGE_INDEX],
                                             title=f"Imagem {
                                                 CURRENT_IMAGE_INDEX}",
                                             parent=image_frame)
-            else:  # Display full image for ROI selection
+            else:  # if ROI display the image in fullsize
                 cut_rois(cv2.cvtColor(
                     IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
         else:
-            print(f"Invalid index. Choose a value between 0 and {
+            print(f"Index inválido. Escolha um valor entre 0 e {
                   len(IMAGES) - 1}.")
 
     except ValueError:
-        print("Please enter a valid number.")
+        print("Insiva um número válido.")
 
 
 # ----------------------------- FUNCTIONALITIES (Part 2) ----------------------------
 
-# Save[.mat] informations
-
-
+# save .mat informations
 def save_image(roi_image):
-    global paciente, ultrassom
-    # Nome do arquivo com base no paciente e ultrassom
-    file_name = f"ROI_{str(paciente).zfill(2)}_{ultrassom}.jpg"
+    global patient, ultrasound
+    # file name based on patient and ultrasound
+    file_name = f"ROI_{str(patient).zfill(2)}_{ultrasound}.jpg"
     file_path = os.path.join(os.getcwd(), file_name)
     image = Image.fromarray(roi_image)
     image.save(file_path, 'JPEG')
 
-    if (ultrassom == 9):
-        paciente += 1
-        ultrassom = 0
+    if (ultrasound > 10):
+        patient += 1
+        ultrasound = 0
     else:
-        ultrassom += 1
+        ultrasound += 1
 
-# Calc index HI value
-
-
-def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
+# calc index HI value
+def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver):
     
-    average_rim = np.mean(roi_rim)
-    average_figado = np.mean(roi_figado)
+    average_kidney = np.mean(roi_kidney)
+    average_liver = np.mean(roi_liver)
 
-    hi_ratio = average_figado / average_rim
+    hi_ratio = average_liver / average_kidney
 
     def show_hi_ratio_window(hi_ratio):
         hi_window = Toplevel(root)  
@@ -289,92 +276,87 @@ def calc_HI(roi_rim, roi_figado, coord_rim, coord_figado):
         hi_window.geometry("300x200")
 
         label = Label(hi_window, text=f"HI Ratio: {hi_ratio:.2f}\n"
-                      f"Coord. Fígado: {coord_figado}\n"
-                      f"Coord. Cortex Renal: {coord_rim}", font=('Arial', 14))
+                      f"Coord. Fígado: {coord_liver}\n"
+                      f"Coord. Cortex Renal: {coord_kidney}", font=('Arial', 14))
         label.pack(pady=20)
         
 
-    adjusted_roi_figado = roi_figado * hi_ratio
+    adjusted_roi_liver = roi_liver * hi_ratio
 
-    # Arredonda os valores
-    adjusted_roi_figado = np.round(adjusted_roi_figado).astype(
-        np.uint8)  # Converte para uint8 após arredondar
+    # round values e convert to uint8
+    adjusted_roi_liver = np.round(adjusted_roi_liver).astype(
+        np.uint8)
 
-    # Certifique-se de que os valores ajustados não excedam 255
-    adjusted_roi_figado = np.clip(adjusted_roi_figado, 0, 255)
+    # values can't be greater than 255
+    adjusted_roi_liver = np.clip(adjusted_roi_liver, 0, 255)
     
-    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}","Coordenadas Figado", f"{coord_figado[0]}, {coord_figado[1]}")
-    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}", "Coordenadas Cortex Renal", f"{coord_rim[0]}, {coord_rim[1]}")
-    update_excel(f"ROI_{str(paciente).zfill(2)}_{ultrassom}", "HI",hi_ratio)
+    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}","Coordenadas Fígado", f"{coord_liver[0]}, {coord_liver[1]}")
+    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "Coordenadas Cortex Renal", f"{coord_kidney[0]}, {coord_kidney[1]}")
+    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "HI",hi_ratio)
     
-    save_image(adjusted_roi_figado)
+    save_image(adjusted_roi_liver)
 
     show_hi_ratio_window(hi_ratio)
     
 
 # ROI -> Region of Interest
-
-
 def cut_rois(image):
     image_copy = image.copy()
     click_count = [0]
 
-    roi_rim = None
-    roi_figado = None
-    coord_rim = None
-    coord_figado = None
+    roi_kidney = None
+    roi_liver = None
+    coord_kidney = None
+    coord_liver = None
 
-    # Canvas
     fig, ax = plt.subplots(figsize=(10, 5))
     canvas = FigureCanvasTkAgg(fig, master=image_frame)
     canvas.get_tk_widget().pack(side=TOP, anchor="center",
                                 padx=10, pady=10, fill="both", expand=True)
-    # Toolbar
+
     toolbar_frame = Frame(image_frame)
     toolbar_frame.pack(side=TOP, anchor="center", padx=10, pady=10)
     toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
     toolbar.update()
 
-    # Exibir a imagem original
+    # show original image
     ax.set_title("Clique para selecionar a ROI do Figado")
     ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
     canvas.draw()
 
     def click_event(event):
-        nonlocal roi_rim, roi_figado, coord_figado, coord_rim
+        nonlocal roi_kidney, roi_liver, coord_liver, coord_kidney
 
         if event.inaxes == ax:
             x, y = int(event.xdata), int(event.ydata)
 
-            # Forçar a ROI a ter 28x28
+            # force ROI to be 28x28
             if x + 28 <= image.shape[1] and y + 28 <= image.shape[0]:
                 roi_cropped = image[y:y + 28, x:x + 28]
 
                 if click_count[0] == 0:
-                    # Primeira seleção: Fígado
-                    roi_figado = roi_cropped
-                    coord_figado = (x - 14, y - 14)
+                    # select liver first
+                    roi_liver = roi_cropped
+                    coord_liver = (x - 14, y - 14)
                     display_roi(
-                        roi_figado, title="ROI Figado (28x28)", parent=roi_liver_frame)
+                        roi_liver, title="ROI Figado (28x28)", parent=roi_liver_frame)
 
                     cv2.rectangle(image_copy, (x - 14, y - 14),
                                   (x + 14, y + 14), (0, 255, 0), 2)
 
                 elif click_count[0] == 1:
-                    # Segunda seleção: córtex renal
+                    # select kidney after
                     roi_rim = roi_cropped
                     coord_rim = (x - 14, y - 14)
                     display_roi(roi_rim, title="ROI Rim (28x28)",
                                 parent=roi_kidney_frame)
 
-                    # Desenhar o retângulo na imagem para o rim
                     cv2.rectangle(image_copy, (x - 14, y - 14),
                                   (x + 14, y + 14), (0, 255, 0), 2)
 
-                    # Função para cálculo de HI (depois de ambas as seleções)
-                    calc_HI(roi_rim, roi_figado, coord_rim, coord_figado)
+                    calc_HI(roi_rim, roi_liver, coord_rim, coord_liver)
 
-                # Atualizar imagem com ROIs desenhadas
+                # update image with roi draw
                 ax.clear()
                 ax.set_title("Clique para selecionar a ROI do cortex renal")
                 ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
@@ -382,7 +364,7 @@ def cut_rois(image):
 
                 click_count[0] += 1
 
-    # Conectar o evento de clique ao canvas
+    # connect click event to canvas
     canvas.mpl_connect('button_press_event', click_event)
 
 
@@ -390,7 +372,6 @@ def select_rois():
     global IMAGES, CURRENT_IMAGE_INDEX, image_frame, canvas, IsLoadImage
 
     IsLoadImage = False
-    # Carregar a imagem
     image_path = filedialog.askopenfilename(
         filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
@@ -400,43 +381,43 @@ def select_rois():
             cut_rois(cv2.imread(image_path))
         elif image_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(image_path)
-            data = mat['data']  # Images are stored in 'data' key
+            data = mat['data']
 
             IMAGES = []
 
-            for entry in data[0]:  # Images are stored in the last element of each entry
+            for entry in data[0]:
                 images_array = entry[-1]
 
                 if images_array is not None:
                     for image in images_array:
                         IMAGES.append(image)
 
-            CURRENT_IMAGE_INDEX = 0  # Start at the first image
+            CURRENT_IMAGE_INDEX = 0  # start at first image
             cut_rois(cv2.cvtColor(
                 IMAGES[CURRENT_IMAGE_INDEX], cv2.COLOR_GRAY2BGR))
 
-def calcular_glcm(roi, distancia):
+def calc_glcm(roi, distance):
     angles  = [0, 45, 90, 135, 180, 225, 270, 315]
     glcm = np.zeros((256, 256), dtype=np.float32)
 
     for angle in angles:
-        # Calcular os deslocamentos para o ângulo atual
-        if angle == 0:      # Horizontal
-            y_offset, x_offset = 0, distancia
-        elif angle == 45:   # Diagonal principal
-            y_offset, x_offset = distancia, distancia
-        elif angle == 90:    # Vertical
-            y_offset, x_offset = distancia, 0
-        elif angle == 135:  # Diagonal secundária
-            y_offset, x_offset = distancia, -distancia
-        elif angle == 180:  # Horizontal (oposto)
-            y_offset, x_offset = 0, -distancia
-        elif angle == 225:  # Diagonal secundária (oposto)
-            y_offset, x_offset = -distancia, -distancia
-        elif angle == 270:  # Vertical (oposto)
-            y_offset, x_offset = -distancia, 0
-        elif angle == 315:  # Diagonal principal (oposto)
-            y_offset, x_offset = -distancia, distancia
+        # calc movement to current algle
+        if angle == 0:
+            y_offset, x_offset = 0, distance
+        elif angle == 45:
+            y_offset, x_offset = distance, distance
+        elif angle == 90:
+            y_offset, x_offset = distance, 0
+        elif angle == 135:
+            y_offset, x_offset = distance, -distance
+        elif angle == 180:
+            y_offset, x_offset = 0, -distance
+        elif angle == 225:
+            y_offset, x_offset = -distance, -distance
+        elif angle == 270:
+            y_offset, x_offset = -distance, 0
+        elif angle == 315:
+            y_offset, x_offset = -distance, distance
     
         for y in range(roi.shape[0]):
             for x in range(roi.shape[1]):
@@ -451,56 +432,56 @@ def calcular_glcm(roi, distancia):
     glcm = glcm / np.sum(glcm)
     return glcm
 
-def calcular_homogeneidade(glcm):
-    homogeneidade = 0
+def calc_homogeneity(glcm):
+    homogeneity = 0
     for i in range(glcm.shape[0]):
         for j in range(glcm.shape[1]):
-            homogeneidade += glcm[i, j] / (1 + abs(i - j))
-    return homogeneidade
+            homogeneity += glcm[i, j] / (1 + abs(i - j))
+    return homogeneity
 
-def calcular_entropia(glcm):
-    entropia = 0
+def calc_entropy(glcm):
+    entropy = 0
     for i in range(glcm.shape[0]):
         for j in range(glcm.shape[1]):
             if glcm[i, j] > 0:
-                entropia -= glcm[i, j] * np.log2(glcm[i, j])
-    return entropia
+                entropy -= glcm[i, j] * np.log2(glcm[i, j])
+    return entropy
 
-def compute_matriz():
+def compute_matrix():
     image_path = filedialog.askopenfilename(
         filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
     if image_path:
         i = [1,2,4,8]
         
-        descritores = []
+        descriptors = []
 
         for j in i:
-            glcm = calcular_glcm(cv2.imread(image_path), j)
-            homogeneidade = calcular_homogeneidade(glcm)
-            entropia =calcular_entropia(glcm)
-            descritores.append({
-                'distancia': j,
-                'homogeneidade': homogeneidade,
-                'entropia': entropia,
+            glcm = calc_glcm(cv2.imread(image_path), j)
+            homogeneity = calc_homogeneity(glcm)
+            entropy =calc_entropy(glcm)
+            descriptors.append({
+                'distance': j,
+                'homogeneity': homogeneity,
+                'entropy': entropy,
                 'glcm': glcm  # Armazena a GLCM
             })
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropia}")
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{homogeneidade}")
+            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropy}")
+            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{entropy}")
                         
-    def show_descritores(descritores):
+    def show_descriptors(descriptors):
         hi_window = Toplevel(root)  
         hi_window.title("Descritores")
         hi_window.geometry("400x300")
 
-        for desc in descritores:
-            result_text = (f"Distância: {desc['distancia']}\n"
-                        f"Homogeneidade: {desc['homogeneidade']:.4f}, Entropia: {desc['entropia']:.4f}\n")
+        for desc in descriptors:
+            result_text = (f"Distância: {desc['distance']}\n"
+                        f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
             
             label = Label(hi_window, text=result_text, font=('Arial', 10))
             label.pack(pady=5)
         
-    show_descritores(descritores)
+    show_descriptors(descriptors)
 
 def tamura():
     image_path = filedialog.askopenfilename(
@@ -511,7 +492,7 @@ def tamura():
         img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
 
         if img is None:
-            print("Error: Could not load image.")
+            print("Error: Imagem não pode ser carregada.")
             return
 
         coarseness = tamura_coarseness(img)
@@ -549,10 +530,10 @@ def tamura():
 def tamura_coarseness(img, k_max=5):
     # k_max (int): max scale (2^k)
 
-    # Prepare the array to store the average differences
+    # array to store the average differences
     A = np.zeros((img.shape[0], img.shape[1], k_max))
 
-    # Calculate the average difference for each scale k
+    # calc average difference for each scale k
     for k in range(k_max):
         window_size = 2 ** k
         shifted_img_right = np.roll(img, -window_size, axis=1)
@@ -560,17 +541,16 @@ def tamura_coarseness(img, k_max=5):
         shifted_img_up = np.roll(img, -window_size, axis=0)
         shifted_img_down = np.roll(img, window_size, axis=0)
 
-        # Difference calculation along x-axis and y-axis
+        # diff along x-axis and y-axis
         S_x = np.abs(img - shifted_img_right) + np.abs(img - shifted_img_left)
         S_y = np.abs(img - shifted_img_up) + np.abs(img - shifted_img_down)
 
-        # Store the average differences for scale k
+        # store average differences for scale k
         A[:, :, k] = (S_x + S_y) / 2
 
-    # Find the scale with the maximum difference at each pixel
+    # find max difference at each pixel
     F_coarseness = np.max(A, axis=2)
 
-    # Return the mean coarseness
     return np.mean(F_coarseness)
     
 def tamura_contrast(img):
@@ -590,6 +570,7 @@ def tamura_contrast(img):
 
 def tamura_directionality(img, num_bins=16):
     # num_bins (int): defines how finely the angle range is divided into discrete intervals
+
     gx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
     gy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=3)
 
@@ -702,7 +683,7 @@ customtkinter.set_default_color_theme("green")  # blue, dark-blue, green
 
 root = customtkinter.CTk()
 
-# Default Opening Settings
+# default open settings
 root.geometry("1760x960")
 root.title('Sistema Auxiliar de Diagnóstico da NAFLD')
 label = Label(
@@ -717,17 +698,17 @@ button_frame.pack(pady=10)
 
 load_images_button = Button(
     button_frame, text='Carregar Imagens', command=load_file)
-load_images_button.grid(row=0, column=0, padx=5)  # Load files
+load_images_button.grid(row=0, column=0, padx=5)  # load files
 
 load_roi_button = Button(
     button_frame, text='Vizualizar ROIs', command=lambda: load_file(True))
-load_roi_button.grid(row=0, column=1, padx=5)  # Load files (ROI)
+load_roi_button.grid(row=0, column=1, padx=5)  # load files (ROI)
 
 roi_button = Button(button_frame, text='Selecionar ROI', command=select_rois)
-roi_button.grid(row=0, column=2, padx=5)  # Select ROI
+roi_button.grid(row=0, column=2, padx=5)  # select ROI
 
-matriz_button = Button(button_frame, text='Computar Matriz de co-ocorrência', command=compute_matriz)
-matriz_button.grid(row=0, column=3, padx=5)
+matrix_button = Button(button_frame, text='Computar Matriz de co-ocorrência', command=compute_matrix)
+matrix_button.grid(row=0, column=3, padx=5)
 
 tamura_button = Button(button_frame, text='Descritores Tamura', command=tamura)
 tamura_button.grid(row=0, column=4, padx=5)
@@ -737,23 +718,23 @@ classificar_button.grid(row=0, column=5, padx=5)
 
 previous_image_button = Button(
     button_frame, text='Imagem Anterior', command=previous_image)
-previous_image_button.grid(row=0, column=6, padx=5)  # Previous Image Button
+previous_image_button.grid(row=0, column=6, padx=5)  # previous image btn
 
 next_image_button = Button(
     button_frame, text='Próxima Imagem', command=next_image)
-next_image_button.grid(row=0, column=7, padx=5)  # Next Image Button
+next_image_button.grid(row=0, column=7, padx=5)  # next image btn
 
 reset_pagination_button = Button(
     button_frame, text='Limpar Fluxo', command=reset_pagination)
 reset_pagination_button.grid(
-    row=0, column=8, padx=5)  # Reset Pagination Button
+    row=0, column=8, padx=5)  # reset pagination btn
 
 index_entry = Entry(button_frame, width=5)
-index_entry.grid(row=0, column=9, padx=5)  # User Pagination Input
+index_entry.grid(row=0, column=9, padx=5)  # user pagination input
 
 go_to_image_button = Button(
     button_frame, text='Ir para Imagem', command=go_to_image)
-go_to_image_button.grid(row=0, column=10, padx=5)  # Go to Index
+go_to_image_button.grid(row=0, column=10, padx=5)  # go to index
 
 # Buttons Grid ------------------------------------------------------------------ End
 
