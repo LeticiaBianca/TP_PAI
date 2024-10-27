@@ -1,8 +1,7 @@
 # Letícia Bianca Oliveira - 776782
-# Nathália Mascarenhas Tenaglia - 766430
 # Raick Miranda Rodrigues Santos - 781755
-# -----------------------------------------
-# NT = (776782 + 766430 + 781755) mod 4 = 3
+# Nathália Mascarenhas Tenaglia - 766430
+# NT = (776782 + 781755 + 766430) mod 4 = 3
 
 # ------------------------------------ LIBRARIES & MODULES --------------------------
 
@@ -30,7 +29,7 @@ CURRENT_IMAGE_INDEX = 0  # Pagination
 IMAGES = None
 
 IsLoadImage = True
-paciente = 54
+paciente = 28
 ultrassom = 0
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
@@ -487,7 +486,7 @@ def compute_matriz():
                 'glcm': glcm  # Armazena a GLCM
             })
             update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropia}")
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{entropia}")
+            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{homogeneidade}")
                         
     def show_descritores(descritores):
         hi_window = Toplevel(root)  
