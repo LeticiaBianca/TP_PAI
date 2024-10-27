@@ -1,7 +1,8 @@
 # Letícia Bianca Oliveira - 776782
-# Raick Miranda Rodrigues Santos - 781755
 # Nathália Mascarenhas Tenaglia - 766430
-# NT = (776782 + 781755 + 766430) mod 4 = 3
+# Raick Miranda Rodrigues Santos - 781755
+# -----------------------------------------
+# NT = (776782 + 766430 + 781755) mod 4 = 3
 
 # ------------------------------------ LIBRARIES & MODULES --------------------------
 
@@ -29,7 +30,7 @@ CURRENT_IMAGE_INDEX = 0  # Pagination
 IMAGES = None
 
 IsLoadImage = True
-paciente = 28
+paciente = 54
 ultrassom = 0
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
