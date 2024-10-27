@@ -667,10 +667,18 @@ def tamura_regularity(img):
     std_devs = np.array([np.std([coarseness]), 
                          np.std([contrast]), 
                          np.std([directionality]), 
-                         np.std([line_likeness])], dtype='f')
+                         np.std([line_likeness])])
+    
+    # Calculate regularity with zero-checking per feature
+    regularity_contributions = []
+    for std_dev in std_devs:
+        if std_dev != 0:
+            regularity_contributions.append(1 / std_dev)
+        else:
+            regularity_contributions.append(0)
     
     # Sum the contributions to get the regularity score
-    regularity = np.sum(1 / (std_devs + 1e-6))
+    regularity = np.sum(regularity_contributions)
 
     return regularity
 
