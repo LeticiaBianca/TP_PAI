@@ -650,7 +650,7 @@ def tamura_regularity(img):
                          np.std([directionality]), 
                          np.std([line_likeness])])
     
-    # Calculate regularity with zero-checking per feature
+    # calc regularity with avoiding division by zero per feature
     regularity_contributions = []
     for std_dev in std_devs:
         if std_dev != 0:
@@ -658,7 +658,7 @@ def tamura_regularity(img):
         else:
             regularity_contributions.append(0)
     
-    # Sum the contributions to get the regularity score
+    # sum contributions to get the regularity score
     regularity = np.sum(regularity_contributions)
 
     return regularity
