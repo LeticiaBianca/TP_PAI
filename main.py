@@ -2,6 +2,8 @@
 # Raick Miranda Rodrigues Santos - 781755
 # Nathália Mascarenhas Tenaglia - 766430
 # NT = (776782 + 781755 + 766430) mod 4 = 3
+# NC = (776782 + 781755 + 766430) mod 2 = 1
+# ND = (776782 + 781755 + 766430) mod 5 = 2
 
 # ------------------------------------ LIBRARIES & MODULES --------------------------
 
@@ -16,6 +18,7 @@ import cv2
 import scipy.io
 from PIL import Image
 import numpy as np
+import xgboost as xg
 
 # image plots
 import matplotlib.pyplot as plt
@@ -31,6 +34,14 @@ IMAGES = None
 IsLoadImage = True
 patient = 0
 ultrasound = 0
+
+roi_data = {
+    "p00": ["ROI_00_0", "ROI_00_1", "ROI_00_2", "ROI_00_3", "ROI_00_4", "ROI_00_5", "ROI_00_6", "ROI_00_7", "ROI_00_8", "ROI_00_9"],
+    "p01": ["ROI_01_0", "ROI_01_1", "ROI_01_2", "ROI_01_3", "ROI_01_4", "ROI_01_5", "ROI_01_6", "ROI_01_7", "ROI_01_8", "ROI_01_9"],
+    "p02": ["ROI_02_0", "ROI_02_1", "ROI_02_2", "ROI_02_3", "ROI_02_4", "ROI_02_5", "ROI_02_6", "ROI_02_7", "ROI_02_8", "ROI_02_9"],
+    "p03": ["ROI_03_0", "ROI_03_1", "ROI_03_2", "ROI_03_3", "ROI_03_4", "ROI_03_5", "ROI_03_6", "ROI_03_7", "ROI_03_8", "ROI_03_9"],
+    "p04": ["ROI_04_0", "ROI_04_1", "ROI_04_2", "ROI_04_3", "ROI_04_4", "ROI_04_5", "ROI_04_6", "ROI_04_7", "ROI_04_8", "ROI_04_9"]
+}
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -675,6 +686,30 @@ def on_closing():
     root.quit()
     root.destroy()
 
+# --------------------------------- CLASSIFIER --------------------------------------
+
+def process_images_to_dataframe(image_directory=""):
+    processed_data = {}
+
+    for label, file_list in roi_data.items():
+        processed_data[label] = []
+        for file_name in file_list:
+            file_path = os.path.join(image_directory, f"{file_name}.jpg")
+            if os.path.exists(file_path):
+                # convert image to matrix
+                image = Image.open(file_path)
+                image_array = np.array(image).flatten().tolist()  # flatten and convert to list
+                processed_data[label].append(image_array)
+            else:
+                print(f"Imagem não encontrada: {file_path}")
+
+    # for label, images in processed_data.items():
+    #     print(f"Classe: {label}")
+    #     for idx, image_array in enumerate(images):
+    #         print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
+    return processed_data  
+
+
 # ------------------------------------ GUI ------------------------------------------
 
 
@@ -691,7 +726,7 @@ label = Label(
 label.pack(pady=10)
 root.protocol("WM_DELETE_WINDOW", on_closing)
 
-# Buttons Grid ---------------------------------------------------------------- Start
+# Buttons Grid 1 ---------------------------------------------------------------- Start
 
 button_frame = Frame(root)
 button_frame.pack(pady=10)
@@ -736,7 +771,18 @@ go_to_image_button = Button(
     button_frame, text='Ir para Imagem', command=go_to_image)
 go_to_image_button.grid(row=0, column=10, padx=5)  # go to index
 
-# Buttons Grid ------------------------------------------------------------------ End
+# Buttons Grid 1 ------------------------------------------------------------------ End
+
+# Buttons Grid 2 ---------------------------------------------------------------- Start
+
+button_frame_class = Frame(root)
+button_frame_class.pack(pady=10)
+
+convert_roi_1d_array = Button(
+    button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
+convert_roi_1d_array.grid(row=0, column=0, padx=5)  # load files
+
+# Buttons Grid 2 ------------------------------------------------------------------ End
 
 # Canvas -> Scroll + Image Frames --------------------------------------------- Start
 
