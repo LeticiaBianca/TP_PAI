@@ -42,6 +42,10 @@ roi_data = {
     "p03": ["ROI_03_0", "ROI_03_1", "ROI_03_2", "ROI_03_3", "ROI_03_4", "ROI_03_5", "ROI_03_6", "ROI_03_7", "ROI_03_8", "ROI_03_9"],
     "p04": ["ROI_04_0", "ROI_04_1", "ROI_04_2", "ROI_04_3", "ROI_04_4", "ROI_04_5", "ROI_04_6", "ROI_04_7", "ROI_04_8", "ROI_04_9"]
 }
+processed_data = {} # flatten images
+class_data = {} # "saudavel" or "possui esteatose"
+caracteristic_data = {} # coordenates, HI, entropy...
+results = []
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -689,8 +693,6 @@ def on_closing():
 # --------------------------------- CLASSIFIER --------------------------------------
 
 def process_images_to_dataframe(image_directory=""):
-    processed_data = {}
-
     for label, file_list in roi_data.items():
         processed_data[label] = []
         for file_name in file_list:
@@ -702,13 +704,43 @@ def process_images_to_dataframe(image_directory=""):
                 processed_data[label].append(image_array)
             else:
                 print(f"Imagem não encontrada: {file_path}")
+    print_dataframe()
 
-    # for label, images in processed_data.items():
-    #     print(f"Classe: {label}")
-    #     for idx, image_array in enumerate(images):
-    #         print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
-    return processed_data  
+def print_dataframe(): 
+    for label, images in processed_data.items():
+        print(f"Paciente: {label}")
+        for idx, image_array in enumerate(images):
+            print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
 
+def load_roi_csv_info(csv_path="rois_informations.csv"):
+    df = pd.read_csv(csv_path, delimiter=";")
+    caracteristic_colums = df.columns[2:]
+
+    # convert for calculations - excluding coodinates
+    num_columns = df.columns[4:]
+    for col in num_columns:
+        try:
+            df[col] = df[col].replace(",", ".", regex=True).astype(float)
+            df[col] = df[col].apply(pd.to_numeric)
+        except ValueError:
+            pass
+    
+    class_data = {
+        row["Nome do arquivo"]: row["Classe"]
+        for _, row in df.iterrows()
+    }
+
+    caracteristic_data = {
+        row["Nome do arquivo"]: row[caracteristic_colums].values
+        for _, row in df.iterrows()
+    } 
+    # print("Características de uma imagem:", caracteristic_data["ROI_00_0"])
+    # print("Classe da imagem:", class_data["ROI_00_0"])
+
+# def xgboost():
+#     for test_patient in processed_data.keys():
+#         X_test = np.array(processed_data[test_patient])
+#         y_test = np.array(labels[test_patient])
 
 # ------------------------------------ GUI ------------------------------------------
 
@@ -781,6 +813,10 @@ button_frame_class.pack(pady=10)
 convert_roi_1d_array = Button(
     button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
 convert_roi_1d_array.grid(row=0, column=0, padx=5)  # load files
+
+load_roi_csv = Button(
+    button_frame_class, text='Extrair dados das ROIs (csv)', command=load_roi_csv_info)
+load_roi_csv.grid(row=0, column=0, padx=5)  # load files
 
 # Buttons Grid 2 ------------------------------------------------------------------ End
 
