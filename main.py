@@ -20,12 +20,16 @@ import scipy.io
 from PIL import Image
 import numpy as np
 import xgboost as xg
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+import seaborn as sns
 
 # image plots
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 import pandas as pd
+import warnings
 
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
@@ -52,7 +56,9 @@ roi_data = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
 processed_data = {} # flatten images
 class_data = {} # "saudavel" or "possui esteatose"
 caracteristic_data = {} # coordenates, HI, entropy...
-results = []
+accuracy_results = []
+sensitivities_results = []
+specificities_results = []
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -697,7 +703,7 @@ def on_closing():
     root.quit()
     root.destroy()
 
-# --------------------------------- CLASSIFIER --------------------------------------
+# --------------------------------- XGBOOST --------------------------------------
 
 def process_images_to_dataframe(image_directory=""):
     for label, file_list in roi_data.items():
@@ -724,9 +730,17 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
     global caracteristic_data
 
     df = pd.read_csv(csv_path, delimiter=";")
-    caracteristic_colums = df.columns[2:]
+    caracteristic_colums = df.columns[4:]
 
     df['Paciente'] = df['Nome do arquivo'].apply(lambda x: x.split('_')[0])
+
+    df['Classe'] = df['Classe'].replace('nan', pd.NA)
+    df = df.dropna(subset=['Classe'])
+    class_mapping = {
+        "saudável": 0,
+        "possui esteatose": 1
+    }
+    df['Classe'] = df['Classe'].map(class_mapping)
 
     # convert for calculations - excluding coodinates
     num_columns = df.columns[4:]
@@ -749,8 +763,8 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
     # print(class_data)
 
 def xgboost():
-    # validacao cruzada
     if class_data:
+        # cross validation  
         for test_patient in roi_data:
             X_train = []
             X_test = []
@@ -766,13 +780,56 @@ def xgboost():
                 # test data
                 else:
                     X_train.append(caracteristic_data[item])
-                    y_train.append(class_data[item]) # labels
-            print(len(X_test))
-            print(len(X_train))
+                    y_train.append(class_data[item])
+
+            model = xg.XGBClassifier(use_label_encoder=False)
+            warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+
+            # print(confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel())
+            tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+            accuracy = accuracy_score(y_test, y_pred)
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+
+            accuracy_results.append(accuracy)
+            sensitivities_results.append(sensitivity)
+            specificities_results.append(specificity)
+
+            show_confusion_matrix(test_patient, y_test, y_pred)
+
     else:
         messagebox.showerror("Erro", f"Dados das ROIs ainda não extraidos.")
-# ------------------------------------ GUI ------------------------------------------
 
+# CONCERTAR ERROS AQUI
+# COLOCAR NA INTERFACE GRAFICA
+def show_confusion_matrix(test_patient, y_test, y_pred):
+    print(f"Confusion Matrix for test_patient {test_patient}:")
+    cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+    print(cm)
+
+    # Plot the confusion matrix using seaborn heatmap
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Negative", "Positive"], yticklabels=["Negative", "Positive"])
+    plt.title(f"Confusion Matrix for {test_patient}")
+    plt.ylabel("True Labels")
+    plt.xlabel("Predicted Labels")
+    plt.show()
+
+    # Print classification report for additional metrics (precision, recall, f1-score)
+    print("Classification Report:")
+    print(classification_report(y_test, y_pred, target_names=["Negative", "Positive"]))
+
+    avg_accuracy = np.mean(accuracy_results)
+    avg_sensitivity = np.mean(sensitivities_results)
+    avg_specificity = np.mean(specificities_results)
+
+    print(f"\nAverage Accuracy: {avg_accuracy:.2f}")
+    print(f"Average Sensitivity: {avg_sensitivity:.2f}")
+    print(f"Average Specificity: {avg_specificity:.2f}")
+
+# ------------------------------------ GUI ------------------------------------------
 
 customtkinter.set_appearance_mode("light")  # system, light, dark
 customtkinter.set_default_color_theme("green")  # blue, dark-blue, green
