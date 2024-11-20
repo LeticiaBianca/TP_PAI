@@ -12,6 +12,7 @@ import os
 import customtkinter
 from tkinter import *
 from tkinter import filedialog
+from tkinter import messagebox
 
 # data handler
 import cv2
@@ -35,13 +36,19 @@ IsLoadImage = True
 patient = 0
 ultrasound = 0
 
-roi_data = {
-    "p00": ["ROI_00_0", "ROI_00_1", "ROI_00_2", "ROI_00_3", "ROI_00_4", "ROI_00_5", "ROI_00_6", "ROI_00_7", "ROI_00_8", "ROI_00_9"],
-    "p01": ["ROI_01_0", "ROI_01_1", "ROI_01_2", "ROI_01_3", "ROI_01_4", "ROI_01_5", "ROI_01_6", "ROI_01_7", "ROI_01_8", "ROI_01_9"],
-    "p02": ["ROI_02_0", "ROI_02_1", "ROI_02_2", "ROI_02_3", "ROI_02_4", "ROI_02_5", "ROI_02_6", "ROI_02_7", "ROI_02_8", "ROI_02_9"],
-    "p03": ["ROI_03_0", "ROI_03_1", "ROI_03_2", "ROI_03_3", "ROI_03_4", "ROI_03_5", "ROI_03_6", "ROI_03_7", "ROI_03_8", "ROI_03_9"],
-    "p04": ["ROI_04_0", "ROI_04_1", "ROI_04_2", "ROI_04_3", "ROI_04_4", "ROI_04_5", "ROI_04_6", "ROI_04_7", "ROI_04_8", "ROI_04_9"]
+roi_data_dictionary = {
+    "00": ["ROI_00_0", "ROI_00_1", "ROI_00_2", "ROI_00_3", "ROI_00_4", "ROI_00_5", "ROI_00_6", "ROI_00_7", "ROI_00_8", "ROI_00_9"],
+    "01": ["ROI_01_0", "ROI_01_1", "ROI_01_2", "ROI_01_3", "ROI_01_4", "ROI_01_5", "ROI_01_6", "ROI_01_7", "ROI_01_8", "ROI_01_9"],
+    "02": ["ROI_02_0", "ROI_02_1", "ROI_02_2", "ROI_02_3", "ROI_02_4", "ROI_02_5", "ROI_02_6", "ROI_02_7", "ROI_02_8", "ROI_02_9"],
+    "03": ["ROI_03_0", "ROI_03_1", "ROI_03_2", "ROI_03_3", "ROI_03_4", "ROI_03_5", "ROI_03_6", "ROI_03_7", "ROI_03_8", "ROI_03_9"],
+    "04": ["ROI_04_0", "ROI_04_1", "ROI_04_2", "ROI_04_3", "ROI_04_4", "ROI_04_5", "ROI_04_6", "ROI_04_7", "ROI_04_8", "ROI_04_9"]
 }
+roi_data = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
+            '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
+            '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
+            '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
+            '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
+            '50', '51', '52', '53', '54']
 processed_data = {} # flatten images
 class_data = {} # "saudavel" or "possui esteatose"
 caracteristic_data = {} # coordenates, HI, entropy...
@@ -713,8 +720,13 @@ def print_dataframe():
             print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
 
 def load_roi_csv_info(csv_path="rois_informations.csv"):
+    global class_data
+    global caracteristic_data
+
     df = pd.read_csv(csv_path, delimiter=";")
     caracteristic_colums = df.columns[2:]
+
+    df['Paciente'] = df['Nome do arquivo'].apply(lambda x: x.split('_')[0])
 
     # convert for calculations - excluding coodinates
     num_columns = df.columns[4:]
@@ -734,14 +746,31 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
         row["Nome do arquivo"]: row[caracteristic_colums].values
         for _, row in df.iterrows()
     } 
-    # print("Características de uma imagem:", caracteristic_data["ROI_00_0"])
-    # print("Classe da imagem:", class_data["ROI_00_0"])
+    # print(class_data)
 
-# def xgboost():
-#     for test_patient in processed_data.keys():
-#         X_test = np.array(processed_data[test_patient])
-#         y_test = np.array(labels[test_patient])
+def xgboost():
+    # validacao cruzada
+    if class_data:
+        for test_patient in roi_data:
+            X_train = []
+            X_test = []
+            y_train = []
+            y_test = []
 
+            # split train and test
+            for item in class_data:
+                # train data
+                if test_patient in item:
+                    X_test.append(caracteristic_data[item])
+                    y_test.append(class_data[item])
+                # test data
+                else:
+                    X_train.append(caracteristic_data[item])
+                    y_train.append(class_data[item]) # labels
+            print(len(X_test))
+            print(len(X_train))
+    else:
+        messagebox.showerror("Erro", f"Dados das ROIs ainda não extraidos.")
 # ------------------------------------ GUI ------------------------------------------
 
 
@@ -812,11 +841,15 @@ button_frame_class.pack(pady=10)
 
 convert_roi_1d_array = Button(
     button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
-convert_roi_1d_array.grid(row=0, column=0, padx=5)  # load files
+convert_roi_1d_array.grid(row=1, column=0, padx=5)
 
 load_roi_csv = Button(
     button_frame_class, text='Extrair dados das ROIs (csv)', command=load_roi_csv_info)
-load_roi_csv.grid(row=0, column=0, padx=5)  # load files
+load_roi_csv.grid(row=1, column=1, padx=5)
+
+run_xgboost = Button(
+    button_frame_class, text='XGBoost', command=xgboost)
+run_xgboost.grid(row=1, column=2, padx=5)
 
 # Buttons Grid 2 ------------------------------------------------------------------ End
 
