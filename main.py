@@ -782,32 +782,41 @@ def xgboost():
                     X_train.append(caracteristic_data[item])
                     y_train.append(class_data[item])
 
-            model = xg.XGBClassifier(use_label_encoder=False)
+            model = xg.XGBClassifier(use_label_encoder=False, eval_metric='logloss')
             warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
             model.fit(X_train, y_train)
             y_pred = model.predict(X_test)
 
-            # print(confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel())
-            tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+            cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+            tn, fp, fn, tp = cm.ravel()
             accuracy = accuracy_score(y_test, y_pred)
-            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
-            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+            sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0 # true positive
+            specificity = tn / (tn + fp) if (tn + fp) > 0 else 0 # true negative
 
             accuracy_results.append(accuracy)
             sensitivities_results.append(sensitivity)
             specificities_results.append(specificity)
 
-            show_confusion_matrix(test_patient, y_test, y_pred)
+            show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity)
 
     else:
         messagebox.showerror("Erro", f"Dados das ROIs ainda não extraidos.")
 
 # CONCERTAR ERROS AQUI
 # COLOCAR NA INTERFACE GRAFICA
-def show_confusion_matrix(test_patient, y_test, y_pred):
+def show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity):
     print(f"Confusion Matrix for test_patient {test_patient}:")
     cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
     print(cm)
+    
+    # Print results
+    print(f"Accuracy: {accuracy:.2f}")
+    print(f"Sensitivity (Recall): {sensitivity:.2f}")
+    print(f"Specificity: {specificity:.2f}")
+    
+    # Print classification report for additional metrics (precision, recall, f1-score)
+    print("Classification Report:")
+    print(classification_report(y_test, y_pred, target_names=["Negative", "Positive"], zero_division=0))
 
     # Plot the confusion matrix using seaborn heatmap
     plt.figure(figsize=(6, 5))
@@ -817,17 +826,13 @@ def show_confusion_matrix(test_patient, y_test, y_pred):
     plt.xlabel("Predicted Labels")
     plt.show()
 
-    # Print classification report for additional metrics (precision, recall, f1-score)
-    print("Classification Report:")
-    print(classification_report(y_test, y_pred, target_names=["Negative", "Positive"]))
+    # avg_accuracy = np.mean(accuracy_results)
+    # avg_sensitivity = np.mean(sensitivities_results)
+    # avg_specificity = np.mean(specificities_results)
 
-    avg_accuracy = np.mean(accuracy_results)
-    avg_sensitivity = np.mean(sensitivities_results)
-    avg_specificity = np.mean(specificities_results)
-
-    print(f"\nAverage Accuracy: {avg_accuracy:.2f}")
-    print(f"Average Sensitivity: {avg_sensitivity:.2f}")
-    print(f"Average Specificity: {avg_specificity:.2f}")
+    # print(f"\nAverage Accuracy: {avg_accuracy:.2f}")
+    # print(f"Average Sensitivity: {avg_sensitivity:.2f}")
+    # print(f"Average Specificity: {avg_specificity:.2f}")
 
 # ------------------------------------ GUI ------------------------------------------
 
