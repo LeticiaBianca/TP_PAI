@@ -40,25 +40,20 @@ IsLoadImage = True
 patient = 0
 ultrasound = 0
 
-roi_data_dictionary = {
-    "00": ["ROI_00_0", "ROI_00_1", "ROI_00_2", "ROI_00_3", "ROI_00_4", "ROI_00_5", "ROI_00_6", "ROI_00_7", "ROI_00_8", "ROI_00_9"],
-    "01": ["ROI_01_0", "ROI_01_1", "ROI_01_2", "ROI_01_3", "ROI_01_4", "ROI_01_5", "ROI_01_6", "ROI_01_7", "ROI_01_8", "ROI_01_9"],
-    "02": ["ROI_02_0", "ROI_02_1", "ROI_02_2", "ROI_02_3", "ROI_02_4", "ROI_02_5", "ROI_02_6", "ROI_02_7", "ROI_02_8", "ROI_02_9"],
-    "03": ["ROI_03_0", "ROI_03_1", "ROI_03_2", "ROI_03_3", "ROI_03_4", "ROI_03_5", "ROI_03_6", "ROI_03_7", "ROI_03_8", "ROI_03_9"],
-    "04": ["ROI_04_0", "ROI_04_1", "ROI_04_2", "ROI_04_3", "ROI_04_4", "ROI_04_5", "ROI_04_6", "ROI_04_7", "ROI_04_8", "ROI_04_9"]
-}
 roi_data = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
             '10', '11', '12', '13', '14', '15', '16', '17', '18', '19',
             '20', '21', '22', '23', '24', '25', '26', '27', '28', '29',
             '30', '31', '32', '33', '34', '35', '36', '37', '38', '39',
             '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
             '50', '51', '52', '53', '54']
+
 processed_data = {} # flatten images
 class_data = {} # "saudavel" or "possui esteatose"
 caracteristic_data = {} # coordenates, HI, entropy...
 accuracy_results = []
 sensitivities_results = []
 specificities_results = []
+cumulative_cm = [[0, 0], [0, 0]]
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -737,8 +732,8 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
     df['Classe'] = df['Classe'].replace('nan', pd.NA)
     df = df.dropna(subset=['Classe'])
     class_mapping = {
-        "saudável": 0,
-        "possui esteatose": 1
+        "possui esteatose": 0,
+        "saudável": 1
     }
     df['Classe'] = df['Classe'].map(class_mapping)
 
@@ -763,6 +758,8 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
     # print(class_data)
 
 def xgboost():
+    global cumulative_cm
+
     if class_data:
         # cross validation  
         for test_patient in roi_data:
@@ -796,14 +793,14 @@ def xgboost():
             accuracy_results.append(accuracy)
             sensitivities_results.append(sensitivity)
             specificities_results.append(specificity)
+            cumulative_cm += cm
 
-            show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity)
+            # show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity)
+        show_confusion_matrix_all_patients()
 
     else:
         messagebox.showerror("Erro", f"Dados das ROIs ainda não extraidos.")
 
-# CONCERTAR ERROS AQUI
-# COLOCAR NA INTERFACE GRAFICA
 def show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity):
     print(f"Confusion Matrix for test_patient {test_patient}:")
     cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
@@ -816,23 +813,37 @@ def show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, se
     
     # Print classification report for additional metrics (precision, recall, f1-score)
     print("Classification Report:")
-    print(classification_report(y_test, y_pred, target_names=["Negative", "Positive"], zero_division=0))
+    print(classification_report(y_test, y_pred, target_names=['Positive', 'Negative'], zero_division=0))
 
     # Plot the confusion matrix using seaborn heatmap
     plt.figure(figsize=(6, 5))
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Negative", "Positive"], yticklabels=["Negative", "Positive"])
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=['Positive', 'Negative'], yticklabels=['Positive', 'Negative'])
     plt.title(f"Confusion Matrix for {test_patient}")
     plt.ylabel("True Labels")
     plt.xlabel("Predicted Labels")
     plt.show()
 
-    # avg_accuracy = np.mean(accuracy_results)
-    # avg_sensitivity = np.mean(sensitivities_results)
-    # avg_specificity = np.mean(specificities_results)
+def show_confusion_matrix_all_patients():
+    global cumulative_cm
 
-    # print(f"\nAverage Accuracy: {avg_accuracy:.2f}")
-    # print(f"Average Sensitivity: {avg_sensitivity:.2f}")
-    # print(f"Average Specificity: {avg_specificity:.2f}")
+    # Display cumulative confusion matrix
+    print("Aggregated Confusion Matrix:")
+    print(cumulative_cm)
+
+    avg_accuracy = np.mean(accuracy_results)
+    avg_sensitivity = np.mean(sensitivities_results)
+    avg_specificity = np.mean(specificities_results)
+
+    print(f"\nAverage Accuracy: {avg_accuracy:.2f}")
+    print(f"Average Sensitivity: {avg_sensitivity:.2f}")
+    print(f"Average Specificity: {avg_specificity:.2f}")
+
+    # Visualize the aggregated confusion matrix
+    sns.heatmap(cumulative_cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Positive', 'Negative'], yticklabels=['Positive', 'Negative'])
+    plt.ylabel('True label')
+    plt.xlabel('Predicted label')
+    plt.title('Aggregated Confusion Matrix')
+    plt.show()
 
 # ------------------------------------ GUI ------------------------------------------
 
