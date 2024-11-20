@@ -47,13 +47,20 @@ roi_data = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
             '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
             '50', '51', '52', '53', '54']
 
-processed_data = {} # flatten images
+# processed_data = {} # flatten images
 class_data = {} # "saudavel" or "possui esteatose"
 caracteristic_data = {} # coordenates, HI, entropy...
 accuracy_results = []
 sensitivities_results = []
 specificities_results = []
-cumulative_cm = [[0, 0], [0, 0]]
+aggregated_cm = [[0, 0], [0, 0]]
+models = []
+
+class_mapping = {
+                    "possui esteatose": 0,
+                    "saudável": 1
+                }
+inverse_class_mapping = {v: k for k, v in class_mapping.items()}
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -700,25 +707,25 @@ def on_closing():
 
 # --------------------------------- XGBOOST --------------------------------------
 
-def process_images_to_dataframe(image_directory=""):
-    for label, file_list in roi_data.items():
-        processed_data[label] = []
-        for file_name in file_list:
-            file_path = os.path.join(image_directory, f"{file_name}.jpg")
-            if os.path.exists(file_path):
-                # convert image to matrix
-                image = Image.open(file_path)
-                image_array = np.array(image).flatten().tolist()  # flatten and convert to list
-                processed_data[label].append(image_array)
-            else:
-                print(f"Imagem não encontrada: {file_path}")
-    print_dataframe()
+# def process_images_to_dataframe(image_directory=""):
+#     for label, file_list in roi_data.items():
+#         processed_data[label] = []
+#         for file_name in file_list:
+#             file_path = os.path.join(image_directory, f"{file_name}.jpg")
+#             if os.path.exists(file_path):
+#                 # convert image to matrix
+#                 image = Image.open(file_path)
+#                 image_array = np.array(image).flatten().tolist()  # flatten and convert to list
+#                 processed_data[label].append(image_array)
+#             else:
+#                 print(f"Imagem não encontrada: {file_path}")
+#     print_dataframe()
 
-def print_dataframe(): 
-    for label, images in processed_data.items():
-        print(f"Paciente: {label}")
-        for idx, image_array in enumerate(images):
-            print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
+# def print_dataframe(): 
+#     for label, images in processed_data.items():
+#         print(f"Paciente: {label}")
+#         for idx, image_array in enumerate(images):
+#             print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
 
 def load_roi_csv_info(csv_path="rois_informations.csv"):
     global class_data
@@ -731,10 +738,7 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
 
     df['Classe'] = df['Classe'].replace('nan', pd.NA)
     df = df.dropna(subset=['Classe'])
-    class_mapping = {
-        "possui esteatose": 0,
-        "saudável": 1
-    }
+    
     df['Classe'] = df['Classe'].map(class_mapping)
 
     # convert for calculations - excluding coodinates
@@ -758,7 +762,7 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
     # print(class_data)
 
 def xgboost():
-    global cumulative_cm
+    global aggregated_cm
 
     if class_data:
         # cross validation  
@@ -793,7 +797,8 @@ def xgboost():
             accuracy_results.append(accuracy)
             sensitivities_results.append(sensitivity)
             specificities_results.append(specificity)
-            cumulative_cm += cm
+            aggregated_cm += cm
+            models.append(model)
 
             # show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity)
         show_confusion_matrix_all_patients()
@@ -824,11 +829,11 @@ def show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, se
     plt.show()
 
 def show_confusion_matrix_all_patients():
-    global cumulative_cm
+    global aggregated_cm
 
     # Display cumulative confusion matrix
     print("Aggregated Confusion Matrix:")
-    print(cumulative_cm)
+    print(aggregated_cm)
 
     avg_accuracy = np.mean(accuracy_results)
     avg_sensitivity = np.mean(sensitivities_results)
@@ -839,11 +844,30 @@ def show_confusion_matrix_all_patients():
     print(f"Average Specificity: {avg_specificity:.2f}")
 
     # Visualize the aggregated confusion matrix
-    sns.heatmap(cumulative_cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Positive', 'Negative'], yticklabels=['Positive', 'Negative'])
+    sns.heatmap(aggregated_cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Positive', 'Negative'], yticklabels=['Positive', 'Negative'])
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     plt.title('Aggregated Confusion Matrix')
     plt.show()
+
+# AJUSTAR PARA QUALQUER IMAGEM
+def xgboost_classification(csv_path="rois_informations.csv"):
+    # ler a imagem
+    image = 'ROI_00_0'
+
+    # extrair classificadores da imagem (HI, entropia, homogeneidade, ...)
+    df = pd.read_csv(csv_path, delimiter=";")
+    image_row = df[df['Nome do arquivo'] == image]
+    image_data = image_row.iloc[:, 4:]
+    image_data = image_data.replace(",", ".", regex=True).astype(float)
+    image_data = image_data.apply(pd.to_numeric)
+
+    # classificar a imagem
+    preds = [model.predict(image_data) for model in models]
+    # Average the predictions across all models
+    avg_preds = np.mean(preds, axis=0)
+    class_names = [inverse_class_mapping[pred] for pred in avg_preds]
+    print(class_names)
 
 # ------------------------------------ GUI ------------------------------------------
 
@@ -912,17 +936,21 @@ go_to_image_button.grid(row=0, column=10, padx=5)  # go to index
 button_frame_class = Frame(root)
 button_frame_class.pack(pady=10)
 
-convert_roi_1d_array = Button(
-    button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
-convert_roi_1d_array.grid(row=1, column=0, padx=5)
+# convert_roi_1d_array = Button(
+#     button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
+# convert_roi_1d_array.grid(row=1, column=0, padx=5)
 
 load_roi_csv = Button(
     button_frame_class, text='Extrair dados das ROIs (csv)', command=load_roi_csv_info)
-load_roi_csv.grid(row=1, column=1, padx=5)
+load_roi_csv.grid(row=1, column=0, padx=5)
 
 run_xgboost = Button(
     button_frame_class, text='XGBoost', command=xgboost)
-run_xgboost.grid(row=1, column=2, padx=5)
+run_xgboost.grid(row=1, column=1, padx=5)
+
+classify_xgboost = Button(
+    button_frame_class, text='Classificar Imagem (XGBoost)', command=xgboost_classification)
+classify_xgboost.grid(row=1, column=2, padx=5)
 
 # Buttons Grid 2 ------------------------------------------------------------------ End
 
