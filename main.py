@@ -31,6 +31,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 import pandas as pd
 import warnings
 
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.applications import MobileNetV2
+
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
 CURRENT_IMAGE_INDEX = 0  # pagination
@@ -54,7 +58,10 @@ accuracy_results = []
 sensitivities_results = []
 specificities_results = []
 aggregated_cm = [[0, 0], [0, 0]]
-models = []
+XGmodels = []
+
+mobileNetModel = None
+class_names = None
 
 class_mapping = {
                     "possui esteatose": 0,
@@ -798,7 +805,7 @@ def xgboost():
             sensitivities_results.append(sensitivity)
             specificities_results.append(specificity)
             aggregated_cm += cm
-            models.append(model)
+            XGmodels.append(model)
 
             # show_confusion_matrix_per_patient(test_patient, y_test, y_pred, accuracy, sensitivity, specificity)
         show_confusion_matrix_all_patients()
@@ -863,11 +870,156 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     image_data = image_data.apply(pd.to_numeric)
 
     # classificar a imagem
-    preds = [model.predict(image_data) for model in models]
+    preds = [model.predict(image_data) for model in XGmodels]
     # Average the predictions across all models
     avg_preds = np.mean(preds, axis=0)
     class_names = [inverse_class_mapping[pred] for pred in avg_preds]
     print(class_names)
+
+# --------------------------------- MOBILE NET --------------------------------------
+def train_mobile_net():
+    global mobileNetModel, class_names
+
+    #Adjusting the image size because the mobile net doesn't accept 28x28
+    dataset = tf.keras.preprocessing.image_dataset_from_directory(
+        "dataset",
+        seed=123,
+        image_size=(224, 224),
+        batch_size=32
+    )
+
+    class_names = dataset.class_names
+    print("Classes:", class_names)
+
+    val_dataset = dataset.take(10) 
+    train_dataset = dataset.skip(10) 
+
+    #Load the pre-trained model
+    pre_treined_model = MobileNetV2(weights='imagenet', include_top=False)
+    pre_treined_model.trainable = False
+
+    #Model training
+    
+    mobileNetModel = models.Sequential([
+        pre_treined_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(256, activation="relu"),
+        layers.BatchNormalization(),
+        layers.Dropout(0.2),
+        layers.Dense(len(class_names), activation="softmax") 
+    ])
+
+    mobileNetModel.compile(optimizer="adam",
+                loss="sparse_categorical_crossentropy",
+                metrics=["accuracy"])
+
+    mobileNetModel.summary()
+
+    history = mobileNetModel.fit(
+        train_dataset,
+        validation_data=val_dataset,
+        epochs=20)
+
+    
+    mobileNetModel.compile(optimizer="adam",
+                loss="sparse_categorical_crossentropy",
+                metrics=["accuracy"])
+
+    mobileNetModel.summary()
+    show_metrics(val_dataset, history)
+
+    
+
+def show_metrics(val_dataset, history):
+    global mobileNetModel, class_names
+    # Evaluate the model on the validation set
+    val_loss, val_accuracy = mobileNetModel.evaluate(val_dataset)
+    print(f"Acurácia de validação: {val_accuracy * 100:.2f}%")
+
+
+    y_true = []
+    y_pred = []
+
+    for images, labels in val_dataset:
+        predictions = mobileNetModel.predict(images)
+        y_true.extend(labels.numpy())
+        y_pred.extend(np.argmax(predictions, axis=1))
+
+    # Calculate the accuracy
+    accuracy = accuracy_score(y_true, y_pred)
+    print(f"Acurácia: {accuracy * 100:.2f}%")
+
+    # Confusion matrix
+    conf_matrix = confusion_matrix(y_true, y_pred)
+    print("Matriz de Confusão:")
+    print(conf_matrix)
+
+    # Classification report
+    class_report = classification_report(y_true, y_pred, target_names=class_names)
+    print("Relatório de Classificação:")
+    print(class_report)
+
+    # Plot the confusion matrix
+    plt.figure(figsize=(8, 6))
+    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title("Matriz de Confusão")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_names))
+    plt.xticks(tick_marks, class_names, rotation=45)
+    plt.yticks(tick_marks, class_names)
+
+    plt.xlabel('Predição')
+    plt.ylabel('Verdadeiro')
+    plt.tight_layout()
+    plt.show()
+
+    # Plot accuracy graph
+    plt.figure(figsize=(10, 6))
+    plt.plot(history.history['accuracy'], label='Acurácia de Treinamento')
+    plt.plot(history.history['val_accuracy'], label='Acurácia de Validação')
+    plt.title('Acurácia de Treinamento e Validação')
+    plt.xlabel('Época')
+    plt.ylabel('Acurácia')
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.show()
+
+def mobile_net_classification():
+    global mobileNetModel, class_names
+    if mobileNetModel is None:
+        # def show_training_status():
+        #     hi_window = Toplevel(root)  
+        #     hi_window.title("Status de Treinamento")
+        #     hi_window.geometry("400x300")
+                
+        #     label = Label(hi_window, text="Modelo não foi treinado ainda. Treinando...", font=('Arial', 10))
+        #     label.pack(pady=5)
+        # show_training_status()
+        root.after(500, train_mobile_net)
+
+    image_path = filedialog.askopenfilename(filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")])
+
+    if image_path:
+        img = cv2.imread(image_path)
+
+        if img is None:
+            print("Error: Imagem não pode ser carregada.")
+            return
+            
+        img = cv2.resize(img, (224, 224))
+        img = np.expand_dims(img, axis=0)
+        img = img / 255.0
+        predictions = mobileNetModel.predict(img)
+        class_idx = np.argmax(predictions)
+        def classification_status():
+            hi_window = Toplevel(root)  
+            hi_window.title("Classificação")
+            hi_window.geometry("400x100")
+                
+            label = Label(hi_window, text=f"Classe prevista: {class_names[class_idx]} com probabilidade {predictions[0][class_idx]:.2f}", font=('Arial', 10))
+            label.pack(pady=5)
+        classification_status()
+        
 
 # ------------------------------------ GUI ------------------------------------------
 
@@ -906,7 +1058,7 @@ matrix_button.grid(row=0, column=3, padx=5)
 tamura_button = Button(button_frame, text='Descritores Tamura', command=tamura)
 tamura_button.grid(row=0, column=4, padx=5)
 
-classificar_button = Button(button_frame, text='Classificar Imagem')
+classificar_button = Button(button_frame, text='Classificar Imagem com Mobile Net', command=mobile_net_classification)
 classificar_button.grid(row=0, column=5, padx=5)
 
 previous_image_button = Button(
