@@ -922,16 +922,18 @@ def train_mobile_net():
 
     
     mobileNetModel.compile(optimizer="adam",
-                loss="sparse_categorical_crossentropy",
+                loss="binary_crossentropy",
                 metrics=["accuracy"])
 
     mobileNetModel.summary()
+    
     show_metrics(val_dataset, history)
 
     
 
 def show_metrics(val_dataset, history):
     global mobileNetModel, class_names
+
     # Evaluate the model on the validation set
     val_loss, val_accuracy = mobileNetModel.evaluate(val_dataset)
     print(f"Acurácia de validação: {val_accuracy * 100:.2f}%")
