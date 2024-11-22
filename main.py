@@ -60,8 +60,7 @@ specificities_results = []
 aggregated_cm = [[0, 0], [0, 0]]
 XGmodels = []
 
-mobileNetModel = None
-class_names = None
+mobileNetModels = []
 
 class_mapping = {
                     "possui esteatose": 0,
@@ -877,68 +876,106 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     print(class_names)
 
 # --------------------------------- MOBILE NET --------------------------------------
+def listar_arquivos(folder = "TP_PAI/dataset"):
+    try:      
+        arquivos = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+        print(f'Total de arquivos: {len(arquivos)}')
+        return arquivos
+    except: 
+        print(f"Erro ao pegar ROIs")
+        return []
+
+def create_dataset(image_paths, labels):
+
+    def preprocess_image(filepath, label):
+        img = tf.io.read_file("TP_PAI/dataset/" + filepath)
+        img = tf.image.decode_jpeg(img, channels=3)
+        img = tf.image.convert_image_dtype(img, dtype=tf.float32)
+        img = tf.image.resize(img, (224, 224))
+        img /= 255.0
+        return img, label
+
+    filepaths = tf.constant(image_paths)
+    labels = tf.constant(labels)
+
+    dataset = tf.data.Dataset.from_tensor_slices((filepaths, labels))
+    dataset = dataset.map(preprocess_image, num_parallel_calls=tf.data.AUTOTUNE)
+    
+     # Imprimindo o número de elementos antes de aplicar o batch
+    dataset_size = sum(1 for _ in dataset)  # Conta o número total de exemplos
+    print(f'Total number of examples: {dataset_size}')
+    
+    dataset = dataset.batch(32).prefetch(buffer_size=tf.data.AUTOTUNE)
+    return dataset
+    
 def train_mobile_net():
-    global mobileNetModel, class_names
-
-    #Adjusting the image size because the mobile net doesn't accept 28x28
-    dataset = tf.keras.preprocessing.image_dataset_from_directory(
-        "dataset",
-        seed=123,
-        image_size=(224, 224),
-        batch_size=32
-    )
-
-    class_names = dataset.class_names
-    print("Classes:", class_names)
-
-    val_dataset = dataset.take(10) 
-    train_dataset = dataset.skip(10) 
-
-    #Load the pre-trained model
-    pre_treined_model = MobileNetV2(weights='imagenet', include_top=False)
-    pre_treined_model.trainable = False
-
-    #Model training
+    global mobileNetModels, aggregated_cm, accuracy_results,sensitivities_results,specificities_results
+    aggregated_cm = [[0, 0], [0, 0]]
+    accuracy_results = []
+    class_data = listar_arquivos();
+    val_dataset_images = []
+    val_dataset_labels = []
+    train_dataset_images = []
+    train_dataset_labels = []
+    if class_data:  
+        for test_patient in roi_data:
+            for item in class_data:
+                if test_patient in item:
+                    val_dataset_images.append(item)
+                    if int(item.split('_')[1]) <= 16:
+                        val_dataset_labels.append(1)
+                    else:
+                        val_dataset_labels.append(0)
+                # test data
+                else:
+                    train_dataset_images.append(item)
+                    if int(item.split('_')[1]) <= 16:
+                        train_dataset_labels.append(1)
+                    else:
+                        train_dataset_labels.append(0)
     
-    mobileNetModel = models.Sequential([
-        pre_treined_model,
-        layers.GlobalAveragePooling2D(),
-        layers.Dense(256, activation="relu"),
-        layers.BatchNormalization(),
-        layers.Dropout(0.2),
-        layers.Dense(len(class_names), activation="softmax") 
-    ])
+            train_dataset = create_dataset(train_dataset_images, train_dataset_labels)
+            val_dataset = create_dataset(val_dataset_images, val_dataset_labels)
 
-    mobileNetModel.compile(optimizer="adam",
-                loss="sparse_categorical_crossentropy",
-                metrics=["accuracy"])
+            #Load the pre-trained model
+            pre_treined_model = MobileNetV2(weights='imagenet', include_top=False)
+            pre_treined_model.trainable = False
 
-    mobileNetModel.summary()
+            #Model training
+            mobileNetModel = models.Sequential([
+                pre_treined_model,
+                layers.GlobalAveragePooling2D(),
+                layers.Dense(256, activation="relu"),
+                layers.BatchNormalization(),
+                layers.Dropout(0.2),
+                layers.Dense(len(class_mapping), activation="softmax") 
+            ])
 
-    history = mobileNetModel.fit(
-        train_dataset,
-        validation_data=val_dataset,
-        epochs=20)
+            mobileNetModel.compile(optimizer="adam",
+                        loss="sparse_categorical_crossentropy",
+                        metrics=["accuracy"])
 
+            mobileNetModel.summary()
+
+            history = mobileNetModel.fit(
+                train_dataset,
+                validation_data=val_dataset,
+                epochs=20,
+                verbose=1)
+
+            
+            mobileNetModel.compile(optimizer="adam",
+                        loss="binary_crossentropy",
+                        metrics=["accuracy"])
+
+            mobileNetModel.summary()
+            mobileNetModels.append(mobileNetModel)
+            show_metrics(val_dataset, history, mobileNetModel)
+        show_final_metrics()
     
-    mobileNetModel.compile(optimizer="adam",
-                loss="binary_crossentropy",
-                metrics=["accuracy"])
 
-    mobileNetModel.summary()
-    
-    show_metrics(val_dataset, history)
-
-    
-
-def show_metrics(val_dataset, history):
-    global mobileNetModel, class_names
-
-    # Evaluate the model on the validation set
-    val_loss, val_accuracy = mobileNetModel.evaluate(val_dataset)
-    print(f"Acurácia de validação: {val_accuracy * 100:.2f}%")
-
-
+def show_metrics(val_dataset, history, mobileNetModel):
+    global aggregated_cm, accuracy_results
     y_true = []
     y_pred = []
 
@@ -949,15 +986,17 @@ def show_metrics(val_dataset, history):
 
     # Calculate the accuracy
     accuracy = accuracy_score(y_true, y_pred)
+    accuracy_results.append(accuracy)
     print(f"Acurácia: {accuracy * 100:.2f}%")
 
     # Confusion matrix
-    conf_matrix = confusion_matrix(y_true, y_pred)
+    conf_matrix = confusion_matrix(y_true, y_pred)   
+    aggregated_cm += conf_matrix
     print("Matriz de Confusão:")
     print(conf_matrix)
 
     # Classification report
-    class_report = classification_report(y_true, y_pred, target_names=class_names)
+    class_report = classification_report(y_true, y_pred, target_names=class_mapping.keys())
     print("Relatório de Classificação:")
     print(class_report)
 
@@ -966,9 +1005,9 @@ def show_metrics(val_dataset, history):
     plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
     plt.title("Matriz de Confusão")
     plt.colorbar()
-    tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45)
-    plt.yticks(tick_marks, class_names)
+    tick_marks = np.arange(len(class_mapping))
+    plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
+    plt.yticks(tick_marks, class_mapping.keys())
 
     plt.xlabel('Predição')
     plt.ylabel('Verdadeiro')
@@ -986,18 +1025,35 @@ def show_metrics(val_dataset, history):
     plt.grid(True)
     plt.show()
 
+def show_final_metrics():
+    global aggregated_cm, accuracy_results
+    
+    avg_accuracy = np.mean(accuracy_results)
+    print(f"Acurácia: {avg_accuracy * 100:.2f}%")
+
+
+    print("Matriz de Confusão:")
+    print(aggregated_cm)
+
+
+    # Plot the confusion matrix
+    plt.figure(figsize=(8, 6))
+    plt.imshow(aggregated_cm, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title("Matriz de Confusão")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_mapping))
+    plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
+    plt.yticks(tick_marks, class_mapping.keys())
+
+    plt.xlabel('Predição')
+    plt.ylabel('Verdadeiro')
+    plt.tight_layout()
+    plt.show()
+
 def mobile_net_classification():
-    global mobileNetModel, class_names
-    if mobileNetModel is None:
-        # def show_training_status():
-        #     hi_window = Toplevel(root)  
-        #     hi_window.title("Status de Treinamento")
-        #     hi_window.geometry("400x300")
-                
-        #     label = Label(hi_window, text="Modelo não foi treinado ainda. Treinando...", font=('Arial', 10))
-        #     label.pack(pady=5)
-        # show_training_status()
-        root.after(500, train_mobile_net)
+    global mobileNetModels
+    if len(mobileNetModels) == 0:
+        train_mobile_net()
 
     image_path = filedialog.askopenfilename(filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")])
 
@@ -1011,14 +1067,20 @@ def mobile_net_classification():
         img = cv2.resize(img, (224, 224))
         img = np.expand_dims(img, axis=0)
         img = img / 255.0
-        predictions = mobileNetModel.predict(img)
-        class_idx = np.argmax(predictions)
+
+        predictions = []
+        class_idx = []
+
+        for model in mobileNetModels:
+            predictions.append(model.predict(img))
+            class_idx.append(np.argmax(predictions))
+
         def classification_status():
             hi_window = Toplevel(root)  
             hi_window.title("Classificação")
             hi_window.geometry("400x100")
                 
-            label = Label(hi_window, text=f"Classe prevista: {class_names[class_idx]} com probabilidade {predictions[0][class_idx]:.2f}", font=('Arial', 10))
+            label = Label(hi_window, text=f"Classe prevista: {class_mapping[np.mean(class_idx)]} com probabilidade {np.mean(predictions)[0][np.mean(class_idx)]:.2f}", font=('Arial', 10))
             label.pack(pady=5)
         classification_status()
         
