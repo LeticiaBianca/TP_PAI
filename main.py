@@ -64,8 +64,8 @@ image_to_classify = np.array([0.0, 0.0, 0.0, 0.0, 0.0,
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
    
-    file_name = "rois_informations.xlsx"
-    file_path = os.path.join(os.getcwd(), file_name)
+    file_path = "rois_informations.xlsx"
+    file_path = os.path.join(os.getcwd(), file_path)
 
     df = pd.read_excel(file_path)
 
@@ -87,31 +87,29 @@ def update_excel(file_name, column, value):
     except Exception as e:
         print(f"Erro ao salvar o arquivo Excel: {idx}")
 
-def update_csv(file_path, column, value):
-    # Load the CSV file into a DataFrame
-    file_name = "rois_informations.csv"
-    file_path = os.path.join(os.getcwd(), file_name)
+def update_csv(file_name, column, value):
+
+    file_path = "rois_informations.csv"
+    file_path = os.path.join(os.getcwd(), file_path)
     
     try:
         df = pd.read_csv(file_path, delimiter=";")
-        print(df.columns)
     except FileNotFoundError:
-        print(f"Arquivo '{file_name}' não foi encontrado.")
+        print(f"Arquivo '{file_path}' não foi encontrado.")
         return
 
     if column not in df.columns:
         print(f"A coluna '{column}' não foi encontrada.")
         return
+    
+    row = df[df['Nome do arquivo'] == file_name].index[0]
 
-    idx = df[df.iloc[:, 0] == file_name].index[0]
-    \
     try:
-        df.at[idx, column] = value
-
-        df.to_csv(file_path, index=False)
-        print(f"Valor atualizado na célula correspondente ao arquivo '{file_name}' e coluna '{column}'.")
+        df.at[row, column] = value
+        df.to_csv(file_path, index=False, sep=";")
+        print(f"Valor atualizado na coluna '{column}' para o identificador '{value}'.")
     except Exception as e:
-        print(f"Erro ao salvar o arquivo CSV: {idx}")
+        print(f"Erro ao salvar o arquivo CSV: {e}")
 
 # plot images with histogram
 def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False):
@@ -353,7 +351,6 @@ def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
     else:
         global image_to_classify
         image_to_classify = np.insert(image_to_classify, 0, hi_ratio)
-        print(image_to_classify)
     
     show_hi_ratio_window(hi_ratio)
     
@@ -527,8 +524,8 @@ def compute_matrix():
                 'entropy': entropy,
                 'glcm': glcm  # Armazena a GLCM
             })
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropy}")
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{entropy}")
+            update_csv(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropy}")
+            update_csv(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{homogeneity}")
                         
     def show_descriptors(descriptors):
         hi_window = Toplevel(root)  
@@ -563,12 +560,12 @@ def tamura():
         regularity = tamura_regularity(img)
         roughness = tamura_roughness(img)
 
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"coarseness",f"{coarseness}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"contrast",f"{contrast}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"directionality",f"{directionality}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"line-likeness",f"{line_likeness}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"regularity",f"{regularity}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"roughness",f"{roughness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"coarseness",f"{coarseness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"contrast",f"{contrast}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"directionality",f"{directionality}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"line-likeness",f"{line_likeness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"regularity",f"{regularity}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"roughness",f"{roughness}")
              
         def show_tamura():
             hi_window = Toplevel(root)  
@@ -899,7 +896,42 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     print(class_names)
 
 def classify_new_image(image_path):
+    global image_to_classify
+
+    # calc HI
     cut_rois(cv2.imread(image_path), 1)
+
+    # calc matrix
+    i = [1,2,4,8]    
+    descriptors = []
+    index = 1
+    for j in i:
+        glcm = calc_glcm(cv2.imread(image_path), j)
+        homogeneity = calc_homogeneity(glcm)
+        entropy = calc_entropy(glcm)
+        descriptors.append({
+            'distance': j,
+            'homogeneity': homogeneity,
+            'entropy': entropy,
+            'glcm': glcm
+        })
+        image_to_classify = np.insert(image_to_classify, index+1, entropy)
+        image_to_classify = np.insert(image_to_classify, index+1, homogeneity)
+        print(image_to_classify)
+    def show_descriptors(descriptors):
+        hi_window = Toplevel(root)  
+        hi_window.title("Descritores")
+        hi_window.geometry("400x300")
+
+        for desc in descriptors:
+            result_text = (f"Distância: {desc['distance']}\n"
+                            f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
+            
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=5)
+    show_descriptors(descriptors)
+
+    # calc tamura
 
     # return data
 
