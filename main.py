@@ -59,7 +59,7 @@ class_mapping = {"possui esteatose": 0, "saudável": 1}
 inverse_class_mapping = {v: k for k, v in class_mapping.items()}
 image_to_classify = np.array([0.0, 0.0, 0.0, 0.0, 0.0,
                               0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0]) # same as caracteristics
+                              0.0, 0.0, 0.0, 0.0]) # same as caracteristics
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -300,19 +300,29 @@ def go_to_image():
 # ----------------------------- FUNCTIONALITIES (Part 2) ----------------------------
 
 # save .mat informations
-def save_image(roi_image):
+def save_image(roi_image, classification):
     global patient, ultrasound
     # file name based on patient and ultrasound
-    file_name = f"ROI_{str(patient).zfill(2)}_{ultrasound}.jpg"
-    file_path = os.path.join(os.getcwd(), file_name)
-    image = Image.fromarray(roi_image)
-    image.save(file_path, 'JPEG')
+    if classification == 0:
+        file_name = f"ROI_{str(patient).zfill(2)}_{ultrasound}.jpg"
+        file_path = os.path.join(os.getcwd(), file_name)
+        image = Image.fromarray(roi_image)
+        image.save(file_path, 'JPEG')
 
-    if (ultrasound > 10):
-        patient += 1
-        ultrasound = 0
+        if (ultrasound > 10):
+            patient += 1
+            ultrasound = 0
+        else:
+            ultrasound += 1
     else:
-        ultrasound += 1
+        file_name = f"current_patient_roi.jpg"
+        file_path = os.path.join(os.getcwd(), file_name)
+        # if the file exists, delete it
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        image = Image.fromarray(roi_image)
+        image.save(file_path, 'JPEG')
+        print(image_to_classify)
 
 # calc index HI value
 def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
@@ -347,10 +357,11 @@ def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
         update_csv(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "Coordenadas Cortex Renal", f"{coord_kidney[0]}, {coord_kidney[1]}")
         update_csv(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "HI",hi_ratio)
         
-        save_image(adjusted_roi_liver)
+        save_image(adjusted_roi_liver, classification)
     else:
         global image_to_classify
         image_to_classify = np.insert(image_to_classify, 0, hi_ratio)
+        save_image(adjusted_roi_liver, classification)
     
     show_hi_ratio_window(hi_ratio)
     
@@ -767,7 +778,6 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
         row["Nome do arquivo"]: row[caracteristic_colums].values
         for _, row in df.iterrows()
     } 
-    # print(caracteristic_data)
 
 def xgboost():
     global aggregated_cm
@@ -881,11 +891,12 @@ def xgboost_classification(csv_path="rois_informations.csv"):
             image_data = image_row.iloc[:, 4:]
             image_data = image_data.replace(",", ".", regex=True).astype(float)
             image_data = image_data.apply(pd.to_numeric)
-        else:
+            # print(len(image_data.columns))
+        elif image == 'current_patient_roi':
             image_data = classify_new_image(image_path)
-            # messagebox.showerror("Erro", f"Coloque uma imagem presente no csv.")
-            print("acabou!")
-            return
+            print(image_data)
+        else:
+            messagebox.showerror("Erro", f"Primeiro corte a ROI da imagem ou escolha uma imagem presente no csv.")
 
 
     # classificar a imagem
@@ -895,45 +906,59 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     class_names = [inverse_class_mapping[pred] for pred in avg_preds]
     print(class_names)
 
-def classify_new_image(image_path):
-    global image_to_classify
-
+def xgboost_cut_image():
+    image_path = filedialog.askopenfilename(filetypes=[("Imagens", "*.png *.jpg")])
+    
     # calc HI
     cut_rois(cv2.imread(image_path), 1)
 
-    # calc matrix
-    i = [1,2,4,8]    
-    descriptors = []
-    index = 1
-    for j in i:
-        glcm = calc_glcm(cv2.imread(image_path), j)
-        homogeneity = calc_homogeneity(glcm)
-        entropy = calc_entropy(glcm)
-        descriptors.append({
-            'distance': j,
-            'homogeneity': homogeneity,
-            'entropy': entropy,
-            'glcm': glcm
-        })
-        image_to_classify = np.insert(image_to_classify, index+1, entropy)
-        image_to_classify = np.insert(image_to_classify, index+1, homogeneity)
-        print(image_to_classify)
-    def show_descriptors(descriptors):
-        hi_window = Toplevel(root)  
-        hi_window.title("Descritores")
-        hi_window.geometry("400x300")
+def classify_new_image(roi_path):
+    global image_to_classify
 
-        for desc in descriptors:
-            result_text = (f"Distância: {desc['distance']}\n"
-                            f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
+    # calc HI
+
+    # calc matrix
+    # i = [1,2,4,8]    
+    # descriptors = []
+    # index = 1
+    # for j in i:
+    #     glcm = calc_glcm(cv2.imread(roi_path), j)
+    #     homogeneity = calc_homogeneity(glcm)
+    #     entropy = calc_entropy(glcm)
+    #     descriptors.append({
+    #         'distance': j,
+    #         'homogeneity': homogeneity,
+    #         'entropy': entropy,
+    #         'glcm': glcm
+    #     })
+    #     image_to_classify = np.insert(image_to_classify, index+1, entropy)
+    #     image_to_classify = np.insert(image_to_classify, index+1, homogeneity)
+    #     print(image_to_classify)
+    # def show_descriptors(descriptors):
+    #     hi_window = Toplevel(root)  
+    #     hi_window.title("Descritores")
+    #     hi_window.geometry("400x300")
+
+    #     for desc in descriptors:
+    #         result_text = (f"Distância: {desc['distance']}\n"
+    #                         f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
             
-            label = Label(hi_window, text=result_text, font=('Arial', 10))
-            label.pack(pady=5)
-    show_descriptors(descriptors)
+    #         label = Label(hi_window, text=result_text, font=('Arial', 10))
+    #         label.pack(pady=5)
+    # show_descriptors(descriptors)
 
     # calc tamura
 
-    # return data
+    # os.remove(roi_path)
+
+    # convert array (image_to_classify) to dataframe (data)
+    columns = ['HI', 'Entropia i =1', 'Homogeneidade i=1', 'Entropia i =2', 'Homogeneidade i=2', 
+                'Entropia i =4', 'Homogeneidade i=4', 'Entropia i =8', 'Homogeneidade i=8', 'coarseness',
+                'contrast', 'directionality', 'line-likeness', 'regularity', 'roughness']
+    data = pd.DataFrame([image_to_classify], columns=columns)
+    data = data.apply(pd.to_numeric)
+    print(len(data.columns))
+    return data
 
 # ------------------------------------ GUI ------------------------------------------
 
@@ -1002,9 +1027,13 @@ go_to_image_button.grid(row=0, column=10, padx=5)  # go to index
 button_frame_class = Frame(root)
 button_frame_class.pack(pady=10)
 
+cut_xgboost = Button(
+    button_frame_class, text='Cut New Image ROI', command=xgboost_cut_image)
+cut_xgboost.grid(row=1, column=0, padx=5)
+
 classify_xgboost = Button(
     button_frame_class, text='Classificar Imagem (XGBoost)', command=xgboost_classification)
-classify_xgboost.grid(row=1, column=0, padx=5)
+classify_xgboost.grid(row=1, column=1, padx=5)
 
 # Buttons Grid 2 ------------------------------------------------------------------ End
 
