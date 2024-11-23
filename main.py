@@ -59,7 +59,7 @@ class_mapping = {"possui esteatose": 0, "saudável": 1}
 inverse_class_mapping = {v: k for k, v in class_mapping.items()}
 image_to_classify = np.array([0.0, 0.0, 0.0, 0.0, 0.0,
                               0.0, 0.0, 0.0, 0.0, 0.0,
-                              0.0, 0.0, 0.0, 0.0]) # same as caracteristics
+                              0.0, 0.0, 0.0, 0.0, 0.0]) # same as caracteristics
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
@@ -322,7 +322,6 @@ def save_image(roi_image, classification):
             os.remove(file_path)
         image = Image.fromarray(roi_image)
         image.save(file_path, 'JPEG')
-        print(image_to_classify)
 
 # calc index HI value
 def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
@@ -360,12 +359,11 @@ def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
         save_image(adjusted_roi_liver, classification)
     else:
         global image_to_classify
-        image_to_classify = np.insert(image_to_classify, 0, hi_ratio)
+        image_to_classify[0] = hi_ratio
         save_image(adjusted_roi_liver, classification)
     
     show_hi_ratio_window(hi_ratio)
     
-
 # ROI -> Region of Interest
 def cut_rois(image, classification=0):
     image_copy = image.copy()
@@ -432,7 +430,6 @@ def cut_rois(image, classification=0):
 
     # connect click event to canvas
     canvas.mpl_connect('button_press_event', click_event)
-
 
 def select_rois():
     global IMAGES, CURRENT_IMAGE_INDEX, image_frame, canvas, IsLoadImage
@@ -891,10 +888,9 @@ def xgboost_classification(csv_path="rois_informations.csv"):
             image_data = image_row.iloc[:, 4:]
             image_data = image_data.replace(",", ".", regex=True).astype(float)
             image_data = image_data.apply(pd.to_numeric)
-            # print(len(image_data.columns))
         elif image == 'current_patient_roi':
             image_data = classify_new_image(image_path)
-            print(image_data)
+            # print(image_data)
         else:
             messagebox.showerror("Erro", f"Primeiro corte a ROI da imagem ou escolha uma imagem presente no csv.")
 
@@ -903,7 +899,7 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     preds = [model.predict(image_data) for model in models]
     # Average the predictions across all models
     avg_preds = np.mean(preds, axis=0)
-    class_names = [inverse_class_mapping[pred] for pred in avg_preds]
+    class_names = [inverse_class_mapping[pred] for pred in avg_preds] # final prediction
     print(class_names)
 
 def xgboost_cut_image():
@@ -914,42 +910,54 @@ def xgboost_cut_image():
 
 def classify_new_image(roi_path):
     global image_to_classify
-
-    # calc HI
+    img = cv2.imread(roi_path, cv2.IMREAD_GRAYSCALE)
 
     # calc matrix
-    # i = [1,2,4,8]    
-    # descriptors = []
-    # index = 1
-    # for j in i:
-    #     glcm = calc_glcm(cv2.imread(roi_path), j)
-    #     homogeneity = calc_homogeneity(glcm)
-    #     entropy = calc_entropy(glcm)
-    #     descriptors.append({
-    #         'distance': j,
-    #         'homogeneity': homogeneity,
-    #         'entropy': entropy,
-    #         'glcm': glcm
-    #     })
-    #     image_to_classify = np.insert(image_to_classify, index+1, entropy)
-    #     image_to_classify = np.insert(image_to_classify, index+1, homogeneity)
-    #     print(image_to_classify)
-    # def show_descriptors(descriptors):
-    #     hi_window = Toplevel(root)  
-    #     hi_window.title("Descritores")
-    #     hi_window.geometry("400x300")
+    i = [1,2,4,8]    
+    descriptors = []
+    index = 1
+    for j in i:
+        glcm = calc_glcm(img, j)
+        homogeneity = calc_homogeneity(glcm)
+        entropy = calc_entropy(glcm)
+        descriptors.append({
+            'distance': j,
+            'homogeneity': homogeneity,
+            'entropy': entropy,
+            'glcm': glcm
+        })
+        image_to_classify[index] = entropy
+        index = index + 1
+        image_to_classify[index] = homogeneity
+        index = index + 1
 
-    #     for desc in descriptors:
-    #         result_text = (f"Distância: {desc['distance']}\n"
-    #                         f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
+    def show_descriptors(descriptors):
+        hi_window = Toplevel(root)  
+        hi_window.title("Descritores")
+        hi_window.geometry("400x300")
+
+        for desc in descriptors:
+            result_text = (f"Distância: {desc['distance']}\n"
+                            f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
             
-    #         label = Label(hi_window, text=result_text, font=('Arial', 10))
-    #         label.pack(pady=5)
-    # show_descriptors(descriptors)
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=5)
+    show_descriptors(descriptors)
 
     # calc tamura
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+    directionality = tamura_directionality(img)
+    line_likeness = tamura_line_likeness(img)
+    regularity = tamura_regularity(img)
+    roughness = tamura_roughness(img)
 
-    # os.remove(roi_path)
+    image_to_classify[9] = coarseness
+    image_to_classify[10] = contrast
+    image_to_classify[11] = directionality
+    image_to_classify[12] = line_likeness
+    image_to_classify[13] = regularity
+    image_to_classify[14] = roughness
 
     # convert array (image_to_classify) to dataframe (data)
     columns = ['HI', 'Entropia i =1', 'Homogeneidade i=1', 'Entropia i =2', 'Homogeneidade i=2', 
@@ -957,7 +965,8 @@ def classify_new_image(roi_path):
                 'contrast', 'directionality', 'line-likeness', 'regularity', 'roughness']
     data = pd.DataFrame([image_to_classify], columns=columns)
     data = data.apply(pd.to_numeric)
-    print(len(data.columns))
+
+    os.remove(roi_path)
     return data
 
 # ------------------------------------ GUI ------------------------------------------
