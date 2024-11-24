@@ -34,6 +34,8 @@ import warnings
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.optimizers import Adam
+
 
 # ----------------------------- GLOBAL VARIABLES ------------------------------------
 
@@ -876,7 +878,7 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     print(class_names)
 
 # --------------------------------- MOBILE NET --------------------------------------
-def listar_arquivos(folder = "TP_PAI/dataset"):
+def listar_arquivos(folder = "dataset"):
     try:      
         arquivos = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
         print(f'Total de arquivos: {len(arquivos)}')
@@ -888,7 +890,7 @@ def listar_arquivos(folder = "TP_PAI/dataset"):
 def create_dataset(image_paths, labels):
 
     def preprocess_image(filepath, label):
-        img = tf.io.read_file("TP_PAI/dataset/" + filepath)
+        img = tf.io.read_file("dataset/" + filepath)
         img = tf.image.decode_jpeg(img, channels=3)
         img = tf.image.convert_image_dtype(img, dtype=tf.float32)
         img = tf.image.resize(img, (224, 224))
@@ -903,7 +905,6 @@ def create_dataset(image_paths, labels):
     
      # Imprimindo o número de elementos antes de aplicar o batch
     dataset_size = sum(1 for _ in dataset)  # Conta o número total de exemplos
-    print(f'Total number of examples: {dataset_size}')
     
     dataset = dataset.batch(32).prefetch(buffer_size=tf.data.AUTOTUNE)
     return dataset
@@ -913,12 +914,14 @@ def train_mobile_net():
     aggregated_cm = [[0, 0], [0, 0]]
     accuracy_results = []
     class_data = listar_arquivos();
-    val_dataset_images = []
-    val_dataset_labels = []
-    train_dataset_images = []
-    train_dataset_labels = []
     if class_data:  
         for test_patient in roi_data:
+           
+            val_dataset_images = []
+            val_dataset_labels = []
+            train_dataset_images = []
+            train_dataset_labels = []
+
             for item in class_data:
                 if test_patient in item:
                     val_dataset_images.append(item)
@@ -936,6 +939,10 @@ def train_mobile_net():
     
             train_dataset = create_dataset(train_dataset_images, train_dataset_labels)
             val_dataset = create_dataset(val_dataset_images, val_dataset_labels)
+            
+            print(f"Paciente {test_patient} - Validação Classe: {np.bincount(val_dataset_labels)}")
+            print(f"Tamanho do Treino: {len(train_dataset_labels)}")
+            print(f"Distribuição no Treino: {np.bincount(train_dataset_labels)}")
 
             #Load the pre-trained model
             pre_treined_model = MobileNetV2(weights='imagenet', include_top=False)
@@ -948,20 +955,21 @@ def train_mobile_net():
                 layers.Dense(256, activation="relu"),
                 layers.BatchNormalization(),
                 layers.Dropout(0.2),
-                layers.Dense(len(class_mapping), activation="softmax") 
+                layers.Dense(1, activation="sigmoid") 
             ])
 
             mobileNetModel.compile(optimizer="adam",
-                        loss="sparse_categorical_crossentropy",
+                        loss="binary_crossentropy",
                         metrics=["accuracy"])
 
             mobileNetModel.summary()
-
+            class_weights = {0: 1.0, 1: len(train_dataset_labels) / np.bincount(train_dataset_labels)[1]}
             history = mobileNetModel.fit(
                 train_dataset,
                 validation_data=val_dataset,
-                epochs=20,
-                verbose=1)
+                epochs=10,
+                verbose=1,
+                class_weight=class_weights)
 
             
             mobileNetModel.compile(optimizer="adam",
@@ -969,7 +977,9 @@ def train_mobile_net():
                         metrics=["accuracy"])
 
             mobileNetModel.summary()
+           
             mobileNetModels.append(mobileNetModel)
+           
             show_metrics(val_dataset, history, mobileNetModel)
         show_final_metrics()
     
@@ -996,34 +1006,34 @@ def show_metrics(val_dataset, history, mobileNetModel):
     print(conf_matrix)
 
     # Classification report
-    class_report = classification_report(y_true, y_pred, target_names=class_mapping.keys())
+    class_report = classification_report(y_true, y_pred, target_names=class_mapping.keys(), labels=[0, 1])
     print("Relatório de Classificação:")
     print(class_report)
 
-    # Plot the confusion matrix
-    plt.figure(figsize=(8, 6))
-    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title("Matriz de Confusão")
-    plt.colorbar()
-    tick_marks = np.arange(len(class_mapping))
-    plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
-    plt.yticks(tick_marks, class_mapping.keys())
+    # # Plot the confusion matrix
+    # plt.figure(figsize=(8, 6))
+    # plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
+    # plt.title("Matriz de Confusão")
+    # plt.colorbar()
+    # tick_marks = np.arange(len(class_mapping))
+    # plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
+    # plt.yticks(tick_marks, class_mapping.keys())
 
-    plt.xlabel('Predição')
-    plt.ylabel('Verdadeiro')
-    plt.tight_layout()
-    plt.show()
+    # plt.xlabel('Predição')
+    # plt.ylabel('Verdadeiro')
+    # plt.tight_layout()
+    # plt.show()
 
-    # Plot accuracy graph
-    plt.figure(figsize=(10, 6))
-    plt.plot(history.history['accuracy'], label='Acurácia de Treinamento')
-    plt.plot(history.history['val_accuracy'], label='Acurácia de Validação')
-    plt.title('Acurácia de Treinamento e Validação')
-    plt.xlabel('Época')
-    plt.ylabel('Acurácia')
-    plt.legend(loc='lower right')
-    plt.grid(True)
-    plt.show()
+    # # Plot accuracy graph
+    # plt.figure(figsize=(10, 6))
+    # plt.plot(history.history['accuracy'], label='Acurácia de Treinamento')
+    # plt.plot(history.history['val_accuracy'], label='Acurácia de Validação')
+    # plt.title('Acurácia de Treinamento e Validação')
+    # plt.xlabel('Época')
+    # plt.ylabel('Acurácia')
+    # plt.legend(loc='lower right')
+    # plt.grid(True)
+    # plt.show()
 
 def show_final_metrics():
     global aggregated_cm, accuracy_results
@@ -1074,13 +1084,16 @@ def mobile_net_classification():
         for model in mobileNetModels:
             predictions.append(model.predict(img))
             class_idx.append(np.argmax(predictions))
+        class_idx_max = np.argmax(np.mean(predictions, axis=0))
+        mean_predictions = np.mean(predictions, axis=0)
+        probability = mean_predictions[class_idx_max]
 
         def classification_status():
             hi_window = Toplevel(root)  
             hi_window.title("Classificação")
             hi_window.geometry("400x100")
                 
-            label = Label(hi_window, text=f"Classe prevista: {class_mapping[np.mean(class_idx)]} com probabilidade {np.mean(predictions)[0][np.mean(class_idx)]:.2f}", font=('Arial', 10))
+            label = Label(hi_window, text=f"Classe prevista: {inverse_class_mapping[int(class_idx_max)]} com probabilidade {probability}", font=('Arial', 10))
             label.pack(pady=5)
         classification_status()
         
