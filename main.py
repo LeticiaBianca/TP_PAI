@@ -60,7 +60,6 @@ sensitivities_results = []
 specificities_results = []
 aggregated_cm = [[0, 0], [0, 0]]
 XGmodels = []
-
 mobileNetModels = []
 
 class_mapping = {"possui esteatose": 0, "saudável": 1}
@@ -878,7 +877,7 @@ def xgboost_classification(csv_path="rois_informations.csv"):
     load_roi_csv_info()
 
     # check if theirs trained models
-    if not models:
+    if not XGmodels:
         xgboost()
       
     # read image
