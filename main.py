@@ -1010,30 +1010,30 @@ def show_metrics(val_dataset, history, mobileNetModel):
     print("Relatório de Classificação:")
     print(class_report)
 
-    # # Plot the confusion matrix
-    # plt.figure(figsize=(8, 6))
-    # plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
-    # plt.title("Matriz de Confusão")
-    # plt.colorbar()
-    # tick_marks = np.arange(len(class_mapping))
-    # plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
-    # plt.yticks(tick_marks, class_mapping.keys())
+    # Plot the confusion matrix
+    plt.figure(figsize=(8, 6))
+    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Blues)
+    plt.title("Matriz de Confusão")
+    plt.colorbar()
+    tick_marks = np.arange(len(class_mapping))
+    plt.xticks(tick_marks, class_mapping.keys(), rotation=45)
+    plt.yticks(tick_marks, class_mapping.keys())
 
-    # plt.xlabel('Predição')
-    # plt.ylabel('Verdadeiro')
-    # plt.tight_layout()
-    # plt.show()
+    plt.xlabel('Predição')
+    plt.ylabel('Verdadeiro')
+    plt.tight_layout()
+    plt.show()
 
-    # # Plot accuracy graph
-    # plt.figure(figsize=(10, 6))
-    # plt.plot(history.history['accuracy'], label='Acurácia de Treinamento')
-    # plt.plot(history.history['val_accuracy'], label='Acurácia de Validação')
-    # plt.title('Acurácia de Treinamento e Validação')
-    # plt.xlabel('Época')
-    # plt.ylabel('Acurácia')
-    # plt.legend(loc='lower right')
-    # plt.grid(True)
-    # plt.show()
+    # Plot accuracy graph
+    plt.figure(figsize=(10, 6))
+    plt.plot(history.history['accuracy'], label='Acurácia de Treinamento')
+    plt.plot(history.history['val_accuracy'], label='Acurácia de Validação')
+    plt.title('Acurácia de Treinamento e Validação')
+    plt.xlabel('Época')
+    plt.ylabel('Acurácia')
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.show()
 
 def show_final_metrics():
     global aggregated_cm, accuracy_results
