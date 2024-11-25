@@ -53,7 +53,6 @@ roi_data = ['00', '01', '02', '03', '04', '05', '06', '07', '08', '09',
             '40', '41', '42', '43', '44', '45', '46', '47', '48', '49',
             '50', '51', '52', '53', '54']
 
-# processed_data = {} # flatten images
 class_data = {} # "saudavel" or "possui esteatose"
 caracteristic_data = {} # coordenates, HI, entropy...
 accuracy_results = []
@@ -64,17 +63,17 @@ XGmodels = []
 
 mobileNetModels = []
 
-class_mapping = {
-                    "possui esteatose": 0,
-                    "saudável": 1
-                }
+class_mapping = {"possui esteatose": 0, "saudável": 1}
 inverse_class_mapping = {v: k for k, v in class_mapping.items()}
+image_to_classify = np.array([0.0, 0.0, 0.0, 0.0, 0.0,
+                              0.0, 0.0, 0.0, 0.0, 0.0,
+                              0.0, 0.0, 0.0, 0.0, 0.0]) # same as caracteristics
 
 # ----------------------------- FUNCTIONALITIES (Part 1) ----------------------------
 def update_excel(file_name, column, value):
    
-    file_name = "rois_informations.xlsx"
-    file_path = os.path.join(os.getcwd(), file_name)
+    file_path = "rois_informations.xlsx"
+    file_path = os.path.join(os.getcwd(), file_path)
 
     df = pd.read_excel(file_path)
 
@@ -95,7 +94,30 @@ def update_excel(file_name, column, value):
         print(f"Valor atualizado na célula correspondente ao arquivo '{file_name}' e coluna '{column}'.")
     except Exception as e:
         print(f"Erro ao salvar o arquivo Excel: {idx}")
-        
+
+def update_csv(file_name, column, value):
+
+    file_path = "rois_informations.csv"
+    file_path = os.path.join(os.getcwd(), file_path)
+    
+    try:
+        df = pd.read_csv(file_path, delimiter=";")
+    except FileNotFoundError:
+        print(f"Arquivo '{file_path}' não foi encontrado.")
+        return
+
+    if column not in df.columns:
+        print(f"A coluna '{column}' não foi encontrada.")
+        return
+    
+    row = df[df['Nome do arquivo'] == file_name].index[0]
+
+    try:
+        df.at[row, column] = value
+        df.to_csv(file_path, index=False, sep=";")
+        print(f"Valor atualizado na coluna '{column}' para o identificador '{value}'.")
+    except Exception as e:
+        print(f"Erro ao salvar o arquivo CSV: {e}")
 
 # plot images with histogram
 def display_image_and_histogram(image, title="Imagem", parent=None, isROI=False):
@@ -286,22 +308,31 @@ def go_to_image():
 # ----------------------------- FUNCTIONALITIES (Part 2) ----------------------------
 
 # save .mat informations
-def save_image(roi_image):
+def save_image(roi_image, classification):
     global patient, ultrasound
     # file name based on patient and ultrasound
-    file_name = f"ROI_{str(patient).zfill(2)}_{ultrasound}.jpg"
-    file_path = os.path.join(os.getcwd(), file_name)
-    image = Image.fromarray(roi_image)
-    image.save(file_path, 'JPEG')
+    if classification == 0:
+        file_name = f"ROI_{str(patient).zfill(2)}_{ultrasound}.jpg"
+        file_path = os.path.join(os.getcwd(), file_name)
+        image = Image.fromarray(roi_image)
+        image.save(file_path, 'JPEG')
 
-    if (ultrasound > 10):
-        patient += 1
-        ultrasound = 0
+        if (ultrasound > 10):
+            patient += 1
+            ultrasound = 0
+        else:
+            ultrasound += 1
     else:
-        ultrasound += 1
+        file_name = f"current_patient_roi.jpg"
+        file_path = os.path.join(os.getcwd(), file_name)
+        # if the file exists, delete it
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        image = Image.fromarray(roi_image)
+        image.save(file_path, 'JPEG')
 
 # calc index HI value
-def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver):
+def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver, classification):
     
     average_kidney = np.mean(roi_kidney)
     average_liver = np.mean(roi_liver)
@@ -328,17 +359,21 @@ def calc_HI(roi_kidney, roi_liver, coord_kidney, coord_liver):
     # values can't be greater than 255
     adjusted_roi_liver = np.clip(adjusted_roi_liver, 0, 255)
     
-    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}","Coordenadas Fígado", f"{coord_liver[0]}, {coord_liver[1]}")
-    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "Coordenadas Cortex Renal", f"{coord_kidney[0]}, {coord_kidney[1]}")
-    update_excel(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "HI",hi_ratio)
+    if classification == 0:
+        update_csv(f"ROI_{str(patient).zfill(2)}_{ultrasound}","Coordenadas Figado", f"{coord_liver[0]}, {coord_liver[1]}")
+        update_csv(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "Coordenadas Cortex Renal", f"{coord_kidney[0]}, {coord_kidney[1]}")
+        update_csv(f"ROI_{str(patient).zfill(2)}_{ultrasound}", "HI",hi_ratio)
+        
+        save_image(adjusted_roi_liver, classification)
+    else:
+        global image_to_classify
+        image_to_classify[0] = hi_ratio
+        save_image(adjusted_roi_liver, classification)
     
-    save_image(adjusted_roi_liver)
-
     show_hi_ratio_window(hi_ratio)
     
-
 # ROI -> Region of Interest
-def cut_rois(image):
+def cut_rois(image, classification=0):
     image_copy = image.copy()
     click_count = [0]
 
@@ -361,7 +396,6 @@ def cut_rois(image):
     ax.set_title("Clique para selecionar a ROI do Figado")
     ax.imshow(cv2.cvtColor(image_copy, cv2.COLOR_BGR2RGB))
     canvas.draw()
-
     def click_event(event):
         nonlocal roi_kidney, roi_liver, coord_liver, coord_kidney
 
@@ -392,7 +426,7 @@ def cut_rois(image):
                     cv2.rectangle(image_copy, (x - 14, y - 14),
                                   (x + 14, y + 14), (0, 255, 0), 2)
 
-                    calc_HI(roi_rim, roi_liver, coord_rim, coord_liver)
+                    calc_HI(roi_rim, roi_liver, coord_rim, coord_liver, classification)
 
                 # update image with roi draw
                 ax.clear()
@@ -405,7 +439,6 @@ def cut_rois(image):
     # connect click event to canvas
     canvas.mpl_connect('button_press_event', click_event)
 
-
 def select_rois():
     global IMAGES, CURRENT_IMAGE_INDEX, image_frame, canvas, IsLoadImage
 
@@ -413,9 +446,12 @@ def select_rois():
     image_path = filedialog.askopenfilename(
         filetypes=[("Imagens e MAT", "*.png *.jpg *.mat")]
     )
-
+    
     if image_path:
-        if image_path.lower().endswith(('*.png', '*.jpg', '*.jpeg')):
+        png = image_path.lower().endswith('.png')
+        jpg = image_path.lower().endswith('.jpg')
+        jpeg = image_path.lower().endswith('.jpeg')
+        if png or jpg or jpeg:
             cut_rois(cv2.imread(image_path))
         elif image_path.lower().endswith('.mat'):
             mat = scipy.io.loadmat(image_path)
@@ -504,8 +540,8 @@ def compute_matrix():
                 'entropy': entropy,
                 'glcm': glcm  # Armazena a GLCM
             })
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropy}")
-            update_excel(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{entropy}")
+            update_csv(os.path.splitext(os.path.basename(image_path))[0], f"Entropia i ={j}",f"{entropy}")
+            update_csv(os.path.splitext(os.path.basename(image_path))[0], f"Homogeneidade i={j}",f"{homogeneity}")
                         
     def show_descriptors(descriptors):
         hi_window = Toplevel(root)  
@@ -540,12 +576,12 @@ def tamura():
         regularity = tamura_regularity(img)
         roughness = tamura_roughness(img)
 
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"coarseness",f"{coarseness}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"contrast",f"{contrast}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"directionality",f"{directionality}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"line-likeness",f"{line_likeness}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"regularity",f"{regularity}")
-        update_excel(os.path.splitext(os.path.basename(image_path))[0], f"roughness",f"{roughness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"coarseness",f"{coarseness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"contrast",f"{contrast}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"directionality",f"{directionality}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"line-likeness",f"{line_likeness}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"regularity",f"{regularity}")
+        update_csv(os.path.splitext(os.path.basename(image_path))[0], f"roughness",f"{roughness}")
              
         def show_tamura():
             hi_window = Toplevel(root)  
@@ -715,26 +751,6 @@ def on_closing():
 
 # --------------------------------- XGBOOST --------------------------------------
 
-# def process_images_to_dataframe(image_directory=""):
-#     for label, file_list in roi_data.items():
-#         processed_data[label] = []
-#         for file_name in file_list:
-#             file_path = os.path.join(image_directory, f"{file_name}.jpg")
-#             if os.path.exists(file_path):
-#                 # convert image to matrix
-#                 image = Image.open(file_path)
-#                 image_array = np.array(image).flatten().tolist()  # flatten and convert to list
-#                 processed_data[label].append(image_array)
-#             else:
-#                 print(f"Imagem não encontrada: {file_path}")
-#     print_dataframe()
-
-# def print_dataframe(): 
-#     for label, images in processed_data.items():
-#         print(f"Paciente: {label}")
-#         for idx, image_array in enumerate(images):
-#             print(f"  Imagem {idx}: {image_array[:10]}... (total de {len(image_array)} pixels)")
-
 def load_roi_csv_info(csv_path="rois_informations.csv"):
     global class_data
     global caracteristic_data
@@ -767,7 +783,6 @@ def load_roi_csv_info(csv_path="rois_informations.csv"):
         row["Nome do arquivo"]: row[caracteristic_colums].values
         for _, row in df.iterrows()
     } 
-    # print(class_data)
 
 def xgboost():
     global aggregated_cm
@@ -860,22 +875,107 @@ def show_confusion_matrix_all_patients():
 
 # AJUSTAR PARA QUALQUER IMAGEM
 def xgboost_classification(csv_path="rois_informations.csv"):
-    # ler a imagem
-    image = 'ROI_00_0'
+    load_roi_csv_info()
 
-    # extrair classificadores da imagem (HI, entropia, homogeneidade, ...)
+    # check if theirs trained models
+    if not models:
+        xgboost()
+      
+    # read image
+    image_path = filedialog.askopenfilename(filetypes=[("Imagens", "*.png *.jpg")])
     df = pd.read_csv(csv_path, delimiter=";")
-    image_row = df[df['Nome do arquivo'] == image]
-    image_data = image_row.iloc[:, 4:]
-    image_data = image_data.replace(",", ".", regex=True).astype(float)
-    image_data = image_data.apply(pd.to_numeric)
+    column = 'Nome do arquivo'
+
+    if image_path:
+        start = image_path.rfind("/") + 1  # Add 1 to exclude the '/'
+        end = image_path.rfind(".")
+        image = image_path[start:end]        # Don't include the '.'
+        if image in df[column].values:
+            # extrair classificadores da imagem (HI, entropia, homogeneidade, ...)
+            image_row = df[df['Nome do arquivo'] == image]
+            image_data = image_row.iloc[:, 4:]
+            image_data = image_data.replace(",", ".", regex=True).astype(float)
+            image_data = image_data.apply(pd.to_numeric)
+        elif image == 'current_patient_roi':
+            image_data = classify_new_image(image_path)
+            # print(image_data)
+        else:
+            messagebox.showerror("Erro", f"Primeiro corte a ROI da imagem ou escolha uma imagem presente no csv.")
+
 
     # classificar a imagem
     preds = [model.predict(image_data) for model in XGmodels]
     # Average the predictions across all models
     avg_preds = np.mean(preds, axis=0)
-    class_names = [inverse_class_mapping[pred] for pred in avg_preds]
+    class_names = [inverse_class_mapping[pred] for pred in avg_preds] # final prediction
     print(class_names)
+
+def xgboost_cut_image():
+    image_path = filedialog.askopenfilename(filetypes=[("Imagens", "*.png *.jpg")])
+    
+    # calc HI
+    cut_rois(cv2.imread(image_path), 1)
+
+def classify_new_image(roi_path):
+    global image_to_classify
+    img = cv2.imread(roi_path, cv2.IMREAD_GRAYSCALE)
+
+    # calc matrix
+    i = [1,2,4,8]    
+    descriptors = []
+    index = 1
+    for j in i:
+        glcm = calc_glcm(img, j)
+        homogeneity = calc_homogeneity(glcm)
+        entropy = calc_entropy(glcm)
+        descriptors.append({
+            'distance': j,
+            'homogeneity': homogeneity,
+            'entropy': entropy,
+            'glcm': glcm
+        })
+        image_to_classify[index] = entropy
+        index = index + 1
+        image_to_classify[index] = homogeneity
+        index = index + 1
+
+    def show_descriptors(descriptors):
+        hi_window = Toplevel(root)  
+        hi_window.title("Descritores")
+        hi_window.geometry("400x300")
+
+        for desc in descriptors:
+            result_text = (f"Distância: {desc['distance']}\n"
+                            f"Homogeneidade: {desc['homogeneity']:.4f}, Entropia: {desc['entropy']:.4f}\n")
+            
+            label = Label(hi_window, text=result_text, font=('Arial', 10))
+            label.pack(pady=5)
+    show_descriptors(descriptors)
+
+    # calc tamura
+    coarseness = tamura_coarseness(img)
+    contrast = tamura_contrast(img)
+    directionality = tamura_directionality(img)
+    line_likeness = tamura_line_likeness(img)
+    regularity = tamura_regularity(img)
+    roughness = tamura_roughness(img)
+
+    image_to_classify[9] = coarseness
+    image_to_classify[10] = contrast
+    image_to_classify[11] = directionality
+    image_to_classify[12] = line_likeness
+    image_to_classify[13] = regularity
+    image_to_classify[14] = roughness
+
+    # convert array (image_to_classify) to dataframe (data)
+    columns = ['HI', 'Entropia i =1', 'Homogeneidade i=1', 'Entropia i =2', 'Homogeneidade i=2', 
+                'Entropia i =4', 'Homogeneidade i=4', 'Entropia i =8', 'Homogeneidade i=8', 'coarseness',
+                'contrast', 'directionality', 'line-likeness', 'regularity', 'roughness']
+    data = pd.DataFrame([image_to_classify], columns=columns)
+    data = data.apply(pd.to_numeric)
+
+    os.remove(roi_path)
+    return data
 
 # --------------------------------- MOBILE NET --------------------------------------
 def listar_arquivos(folder = "dataset"):
@@ -1165,21 +1265,13 @@ go_to_image_button.grid(row=0, column=10, padx=5)  # go to index
 button_frame_class = Frame(root)
 button_frame_class.pack(pady=10)
 
-# convert_roi_1d_array = Button(
-#     button_frame_class, text='Converter ROIs', command=process_images_to_dataframe)
-# convert_roi_1d_array.grid(row=1, column=0, padx=5)
-
-load_roi_csv = Button(
-    button_frame_class, text='Extrair dados das ROIs (csv)', command=load_roi_csv_info)
-load_roi_csv.grid(row=1, column=0, padx=5)
-
-run_xgboost = Button(
-    button_frame_class, text='XGBoost', command=xgboost)
-run_xgboost.grid(row=1, column=1, padx=5)
+cut_xgboost = Button(
+    button_frame_class, text='Cut New Image ROI', command=xgboost_cut_image)
+cut_xgboost.grid(row=1, column=0, padx=5)
 
 classify_xgboost = Button(
     button_frame_class, text='Classificar Imagem (XGBoost)', command=xgboost_classification)
-classify_xgboost.grid(row=1, column=2, padx=5)
+classify_xgboost.grid(row=1, column=1, padx=5)
 
 # Buttons Grid 2 ------------------------------------------------------------------ End
 
